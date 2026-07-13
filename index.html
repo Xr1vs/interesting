@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Audio Prep Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0a0a; --surface:#131313; --surface-2:#1c1c1c; --border:#2a2a2a;
+    --text:#f2f2f2; --text-dim:#8f8f8f; --text-faint:#5a5a5a;
+    --fg:#ffffff; --fg-inverse:#000000;
+    --good:#8f8f8f; --danger:#e5e5e5;
+    --radius:14px;
+  }
+  html[data-theme="light"]{
+    --bg:#fafafa; --surface:#ffffff; --surface-2:#f1f1f1; --border:#e2e2e2;
+    --text:#111111; --text-dim:#6b6b6b; --text-faint:#a3a3a3;
+    --fg:#000000; --fg-inverse:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+    font-family:'Manrope', sans-serif; transition:background 0.25s ease, color 0.25s ease;
+  }
+  .mono{font-family:'JetBrains Mono', monospace;}
+
+  /* ---------- Lock screen ---------- */
+  #lock{
+    position:fixed; inset:0; background:var(--bg); z-index:100;
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity 0.4s ease, visibility 0.4s ease;
+  }
+  #lock.hidden{opacity:0; visibility:hidden; pointer-events:none;}
+  .lock-card{
+    width:320px; text-align:center;
+    animation:rise 0.5s ease;
+  }
+  @keyframes rise{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);}}
+  .lock-mark{
+    width:44px; height:44px; border-radius:50%; margin:0 auto 22px;
+    border:1.5px solid var(--text); display:flex; align-items:center; justify-content:center;
+    font-size:1.1rem;
+  }
+  .lock-card h2{font-weight:700; font-size:1.15rem; margin:0 0 6px;}
+  .lock-card p{color:var(--text-dim); font-size:0.85rem; margin:0 0 22px;}
+  #lockInput{
+    width:100%; background:var(--surface); border:1px solid var(--border); color:var(--text);
+    border-radius:10px; padding:13px 14px; font-size:0.95rem; text-align:center;
+    letter-spacing:2px; transition:border-color 0.2s;
+  }
+  #lockInput:focus{outline:none; border-color:var(--text);}
+  #lockBtn{
+    width:100%; margin-top:12px; padding:13px; border:none; border-radius:10px;
+    background:var(--fg); color:var(--fg-inverse); font-weight:700; font-size:0.9rem;
+    cursor:pointer; transition:opacity 0.2s;
+  }
+  #lockBtn:hover{opacity:0.85;}
+  #lockErr{color:var(--danger); font-size:0.78rem; margin-top:10px; min-height:1em;}
+
+  /* ---------- App shell ---------- */
+  #app{max-width:760px; margin:0 auto; padding:36px 20px 90px; opacity:0; transition:opacity 0.4s ease;}
+  #app.shown{opacity:1;}
+
+  .topbar{display:flex; align-items:center; justify-content:space-between; margin-bottom:30px;}
+  .brand{display:flex; align-items:center; gap:10px;}
+  .brand-dot{width:9px; height:9px; border-radius:50%; background:var(--fg);}
+  .brand h1{font-size:1.15rem; font-weight:800; margin:0; letter-spacing:-0.2px;}
+
+  .tabs{display:flex; gap:4px; background:var(--surface); border:1px solid var(--border); border-radius:11px; padding:4px;}
+  .tab{
+    padding:8px 16px; border-radius:8px; font-size:0.82rem; font-weight:600; color:var(--text-dim);
+    cursor:pointer; transition:all 0.2s;
+  }
+  .tab.active{background:var(--fg); color:var(--fg-inverse);}
+
+  .panel{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:22px 24px; margin-bottom:16px;
+    transition:border-color 0.2s;
+  }
+  .panel h3{font-size:0.72rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); margin:0 0 16px;}
+
+  /* dropzone */
+  .dropzone{
+    border:1.5px dashed var(--border); border-radius:12px; padding:30px; text-align:center;
+    cursor:pointer; transition:0.2s;
+  }
+  .dropzone.drag{border-color:var(--text); background:var(--surface-2);}
+  .dropzone .big{font-weight:600; margin-bottom:4px;}
+  .dropzone .sub{color:var(--text-faint); font-size:0.8rem;}
+  .filelist{margin-top:14px; display:flex; flex-direction:column; gap:6px;}
+  .fileitem{
+    display:flex; justify-content:space-between; align-items:center;
+    background:var(--surface-2); border-radius:9px; padding:9px 13px; font-size:0.82rem;
+  }
+  .fileitem .rm{color:var(--text-dim); cursor:pointer; font-weight:700; padding:0 4px;}
+  .fileitem .rm:hover{color:var(--text);}
+
+  /* mode */
+  .modes{display:flex; gap:10px;}
+  .mode-btn{
+    flex:1; padding:14px; text-align:center; cursor:pointer; border-radius:11px;
+    border:1px solid var(--border); background:var(--surface-2); transition:0.2s;
+  }
+  .mode-btn b{display:block; font-size:0.95rem;}
+  .mode-btn span{font-size:0.72rem; color:var(--text-faint);}
+  .mode-btn.active{border-color:var(--text); background:var(--fg); }
+  .mode-btn.active b, .mode-btn.active span{color:var(--fg-inverse);}
+
+  /* fields */
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px;}
+  .field label{display:block; font-size:0.68rem; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--text-faint); margin-bottom:6px;}
+  select, input[type=number], input[type=text], input[type=password]{
+    width:100%; background:var(--surface-2); color:var(--text); border:1px solid var(--border);
+    border-radius:9px; padding:10px 11px; font-family:'Manrope'; font-size:0.85rem; transition:border-color 0.2s;
+  }
+  select:focus, input:focus{outline:none; border-color:var(--text);}
+  .row-inline{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .switch{
+    width:40px; height:22px; border-radius:11px; background:var(--surface-2); border:1px solid var(--border);
+    position:relative; cursor:pointer; flex-shrink:0; transition:0.2s;
+  }
+  .switch .knob{position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:var(--text-faint); transition:0.2s;}
+  .switch.on{background:var(--fg);}
+  .switch.on .knob{left:20px; background:var(--fg-inverse);}
+  .note{font-size:0.76rem; color:var(--text-faint); margin-top:14px; line-height:1.6;}
+  .note b{color:var(--text-dim);}
+
+  /* process */
+  .fire-btn{
+    width:100%; padding:15px; border:none; border-radius:11px; background:var(--fg); color:var(--fg-inverse);
+    font-weight:700; font-size:0.95rem; cursor:pointer; transition:opacity 0.2s;
+  }
+  .fire-btn:hover:not(:disabled){opacity:0.85;}
+  .fire-btn:disabled{opacity:0.35; cursor:not-allowed;}
+
+  .bar-wrap{margin-top:16px;}
+  .bar-label{display:flex; justify-content:space-between; font-size:0.72rem; color:var(--text-dim); margin-bottom:6px;}
+  .bar-track{height:6px; border-radius:3px; background:var(--surface-2); overflow:hidden;}
+  .bar-fill{height:100%; width:0%; background:var(--fg); border-radius:3px; transition:width 0.25s ease;}
+  .status-line{margin-top:12px; font-size:0.82rem; color:var(--text-dim); min-height:1.2em;}
+
+  .console{
+    background:var(--surface-2); border-radius:11px; padding:14px 16px; height:220px;
+    overflow-y:auto; font-size:0.76rem; line-height:1.6;
+  }
+  .console::-webkit-scrollbar{width:6px;} .console::-webkit-scrollbar-thumb{background:var(--border); border-radius:3px;}
+  .lg-info{color:var(--text-dim);} .lg-header{color:var(--text); font-weight:600;}
+  .lg-good{color:var(--text);} .lg-warning{color:var(--text-dim);}
+  .lg-critical{color:var(--text); font-weight:700;} .lg-separator{color:var(--text-faint);}
+
+  .outputs{margin-top:14px; display:flex; flex-direction:column; gap:8px;}
+  .outfile{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    background:var(--surface-2); border-radius:9px; padding:10px 14px; font-size:0.8rem; flex-wrap:wrap;
+  }
+  .outfile .name{flex:1; min-width:120px;}
+  .outfile .assetid{color:var(--text-dim); font-size:0.74rem;}
+  .btn-sm{
+    background:transparent; border:1px solid var(--border); color:var(--text); border-radius:7px;
+    padding:6px 10px; font-size:0.74rem; font-weight:600; cursor:pointer; transition:0.2s;
+  }
+  .btn-sm:hover{border-color:var(--text);}
+  .btn-sm:disabled{opacity:0.4; cursor:not-allowed;}
+  .zip-btn{
+    margin-top:10px; padding:11px; width:100%; background:transparent; border:1px solid var(--border);
+    color:var(--text); border-radius:9px; font-weight:600; cursor:pointer; font-size:0.82rem; transition:0.2s;
+  }
+  .zip-btn:hover{border-color:var(--text);}
+
+  /* settings */
+  .theme-row{display:flex; gap:10px;}
+  .theme-opt{
+    flex:1; padding:14px; border-radius:11px; border:1px solid var(--border); cursor:pointer; text-align:center;
+    font-size:0.82rem; font-weight:600; transition:0.2s;
+  }
+  .theme-opt.active{border-color:var(--text); background:var(--surface-2);}
+  .settings-note{font-size:0.76rem; color:var(--text-faint); margin-top:10px; line-height:1.6;}
+
+  .foot{text-align:center; color:var(--text-faint); font-size:0.72rem; margin-top:24px;}
+  .hidden-view{display:none;}
+</style>
+</head>
+<body>
+
+<div id="lock">
+  <div class="lock-card">
+    <div class="lock-mark">🔒</div>
+    <h2>Audio Prep Console</h2>
+    <p>Enter password to continue</p>
+    <input type="password" id="lockInput" placeholder="••••••••" autocomplete="off">
+    <button id="lockBtn">Unlock</button>
+    <div id="lockErr"></div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <div class="brand"><div class="brand-dot"></div><h1>Audio Prep Console</h1></div>
+    <div class="tabs">
+      <div class="tab active" data-view="process">Process</div>
+      <div class="tab" data-view="assets">Roblox Assets</div>
+      <div class="tab" data-view="settings">Settings</div>
+    </div>
+  </div>
+
+  <!-- ============ PROCESS VIEW ============ -->
+  <div id="view-process">
+
+    <div class="panel">
+      <h3>Source</h3>
+      <div class="dropzone" id="dropzone">
+        <div class="big">Drop audio files here, or click to browse</div>
+        <div class="sub">MP3 · WAV · OGG · FLAC · M4A</div>
+        <input type="file" id="fileInput" multiple accept="audio/*" style="display:none">
+      </div>
+      <div class="filelist" id="fileList"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Mode</h3>
+      <div class="modes">
+        <div class="mode-btn active" data-mode="song"><b>Song</b><span>Single track</span></div>
+        <div class="mode-btn" data-mode="concert"><b>Concert Set</b><span>Long set, gate + crowd handling</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Chain</h3>
+      <div class="grid">
+        <div class="field"><label>Output Volume</label>
+          <select id="volSel">
+            <option value="-50">−50 dB (loudest)</option>
+            <option value="-55" selected>−55 dB</option>
+            <option value="-60">−60 dB</option>
+            <option value="-70">−70 dB (quiet)</option>
+          </select>
+        </div>
+        <div class="field"><label>Noise Reduction</label>
+          <select id="noiseSel">
+            <option value="off">Off</option>
+            <option value="light" selected>Light</option>
+            <option value="medium">Medium</option>
+            <option value="strong">Strong</option>
+            <option value="max">Max (heaviest static removal)</option>
+          </select>
+        </div>
+        <div class="field"><label>Export Format</label>
+          <select id="fmtSel">
+            <option value="ogg_std" selected>OGG · 256k</option>
+            <option value="ogg_hq">OGG · 384k</option>
+            <option value="mp3">MP3 · V0</option>
+            <option value="wav">WAV (lossless)</option>
+          </select>
+        </div>
+        <div class="field"><label>File Suffix</label>
+          <input type="text" id="suffixInp" value="_rbx">
+        </div>
+      </div>
+      <div class="field" style="margin-top:16px;">
+        <label>Split Into Chunks</label>
+        <div class="row-inline">
+          <div class="switch on" id="splitSwitch"><div class="knob"></div></div>
+          <span style="font-size:0.8rem; color:var(--text-dim);">Target length per chunk (Roblox minutes):</span>
+          <input type="number" id="splitMin" value="6.5" step="0.1" min="0.5" style="width:80px;">
+        </div>
+        <div class="settings-note" id="chunkSizeNote" style="margin-top:8px;"></div>
+      </div>
+      <div class="note">Pitch is shifted down <b>2.941×</b> on export. Set <b>Sound.PlaybackSpeed</b> to <b>2.941</b> in Roblox to restore it — the companion player script does this automatically.</div>
+    </div>
+
+    <div class="panel">
+      <h3>Run</h3>
+      <button class="fire-btn" id="processBtn">Process Files</button>
+      <div class="bar-wrap"><div class="bar-label"><span>Engine</span><span id="engineTxt">not loaded</span></div>
+        <div class="bar-track"><div class="bar-fill" id="engineBar"></div></div></div>
+      <div class="bar-wrap"><div class="bar-label"><span>Files</span><span id="fileProgTxt">0 / 0</span></div>
+        <div class="bar-track"><div class="bar-fill" id="fileBar"></div></div></div>
+      <div class="bar-wrap"><div class="bar-label"><span>Current file</span><span id="stageProgTxt">idle</span></div>
+        <div class="bar-track"><div class="bar-fill" id="stageBar"></div></div></div>
+      <div class="status-line" id="statusLine">Ready. First run downloads the processing engine (~30MB) — that can take 10–60s depending on your connection, then it's cached.</div>
+    </div>
+
+    <div class="panel">
+      <h3>Log</h3>
+      <div class="console mono" id="consoleLog"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Output</h3>
+      <div id="outputsEmpty" style="color:var(--text-faint); font-size:0.82rem;">Processed chunks will appear here.</div>
+      <div class="outputs" id="outputsList"></div>
+      <button class="zip-btn" id="zipBtn" style="display:none;">Download All As .zip</button>
+      <button class="zip-btn" id="uploadAllBtn" style="display:none;">Upload All To Roblox</button>
+
+      <div id="showBuildBlock" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+        <button class="fire-btn" id="buildShowBtn" style="margin-top:10px;">Upload All &amp; Build Show</button>
+        <div class="settings-note" id="showBuildNote" style="margin-top:8px;">
+          Uploads every processed chunk from this batch that isn't uploaded yet, then downloads a
+          <code class="mono">&lt;Show Name&gt;.rbxmx</code> folder with a Sound for each track (asset IDs
+          already filled in). Show name is set in the <b>Roblox Assets</b> tab. Drop it into Studio under
+          <code class="mono">XrAudio &gt; Shows</code> (right-click <b>Shows</b> → <b>Insert from File</b>) —
+          or, easier, use <b>Build &amp; Download Updated .rbxm</b> in the Roblox Assets tab, which does this
+          automatically without any manual Studio steps.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ROBLOX ASSETS VIEW ============ -->
+  <div id="view-assets" class="hidden-view">
+    <div class="panel">
+      <h3>Show</h3>
+      <div class="field">
+        <label>Show name</label>
+        <input type="text" id="showNameInp" placeholder="e.g. Friday Night Set">
+      </div>
+      <div class="settings-note">
+        This renames the show folder inside the .rbxm when you build below (used to be a separate manual
+        Studio step — not anymore).
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Show-Control Whitelist</h3>
+      <div class="settings-note">
+        Usernames listed here are allowed to trigger/control shows via chat commands. Building below bakes
+        this list directly into the <code class="mono">Whitelist</code> module inside the .rbxm — nothing to
+        manually swap out in Studio.
+      </div>
+      <div class="grid" style="margin-top:10px;">
+        <div class="field" style="grid-column: span 2;">
+          <label>Add username</label>
+          <input type="text" id="whitelistNameInp" placeholder="RobloxUsername" autocomplete="off">
+        </div>
+      </div>
+      <button class="fire-btn" id="whitelistAddBtn" style="margin-top:10px;">Add</button>
+      <div id="whitelistList" style="margin-top:14px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+      <div class="settings-note" id="whitelistNote" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Build options</h3>
+      <div class="row-inline">
+        <input type="checkbox" id="obfuscateChk" style="width:16px; height:16px;">
+        <label for="obfuscateChk" style="font-size:0.85rem; color:var(--text-dim);">
+          Minify the Server/Commands/AudioClient scripts (strip comments &amp; extra whitespace) before
+          building
+        </label>
+      </div>
+      <div class="settings-note" style="margin-top:8px;">
+        Heads up on what this can and can't do: Roblox doesn't support shipping "encrypted" scripts that
+        still run — whoever has Studio access to a place can always read a Script's Source there, full stop.
+        The good news is that <b>Server</b> and <b>Commands</b> (the whitelist-check logic) run with
+        <code class="mono">RunContext = Server</code>, which Roblox never sends to players or exploits in
+        the first place — only client-side <b>LocalScripts</b> (the playback/sync script here) are ever
+        exposed to someone running exploit tools. This option just strips comments/whitespace from those
+        three scripts to make casual reading harder if you hand the file to someone else; it's minification,
+        not real encryption. The <b>Whitelist</b> module is left fully readable either way, since you're
+        meant to keep editing it here.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Build &amp; Download</h3>
+      <div class="settings-note">
+        Takes the bundled <code class="mono">XrAudioSystem.rbxm</code> template, renames the show folder,
+        writes every uploaded track from the Process tab into the show's Sound slots (up to
+        <span id="slotCapNote">58</span> tracks), bakes in the whitelist above, and gives you back one
+        updated <code class="mono">.rbxm</code> — insert it into Studio same as before, no manual editing.
+      </div>
+      <button class="fire-btn" id="buildRbxmBtn" style="margin-top:14px;">Build &amp; Download Updated XrAudioSystem.rbxm</button>
+      <div class="settings-note" id="buildRbxmNote" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <!-- ============ SETTINGS VIEW ============ -->
+  <div id="view-settings" class="hidden-view">
+    <div class="panel">
+      <h3>Appearance</h3>
+      <div class="theme-row">
+        <div class="theme-opt active" data-theme="dark">Dark</div>
+        <div class="theme-opt" data-theme="light">Light</div>
+      </div>
+      <div class="settings-note">Black &amp; white throughout — this just flips which one is the background.</div>
+    </div>
+
+    <div class="panel">
+      <h3>Roblox Account</h3>
+      <div class="grid">
+        <div class="field"><label>Open Cloud API Key</label>
+          <input type="password" id="robloxApiKey" placeholder="paste your Open Cloud API key">
+        </div>
+        <div class="field"><label>Creator Type</label>
+          <select id="robloxCreatorType">
+            <option value="User">User</option>
+            <option value="Group">Group</option>
+          </select>
+        </div>
+        <div class="field"><label>Creator ID</label>
+          <input type="text" id="robloxCreatorId" placeholder="your user or group id">
+        </div>
+      </div>
+      <button class="fire-btn" id="saveRobloxBtn" style="margin-top:14px;">Save</button>
+      <button class="fire-btn" id="testRobloxBtn" style="margin-top:14px; margin-left:8px;">Test Key (read-only)</button>
+      <div class="settings-note" id="robloxSavedNote"></div>
+      <div class="settings-note" id="testKeyNote" style="margin-top:8px;"></div>
+      <div class="settings-note" id="serverKeyStatus" style="margin-top:8px;">Checking whether this deployment has a server-side key configured…</div>
+      <div class="settings-note">
+        Create a key at <b>create.roblox.com/credentials</b> with the <b>Assets · Write</b> permission for your
+        user or group — and make sure <b>Restrict by IP</b> is set to <b>Any IP</b>, since Vercel/Railway don't
+        use a fixed outbound IP (a locked-down key is the #1 cause of a 401 error here). It's stored only in
+        this browser (localStorage) and sent only to this site's own upload endpoint, which relays it to
+        Roblox — it never goes anywhere else. Uploaded audio still goes through Roblox's normal moderation
+        review before it's usable.
+      </div>
+      <div class="settings-note" style="margin-top:8px;">
+        <b>Simpler option:</b> instead of pasting the key here every time, set <code class="mono">ROBLOX_API_KEY</code>,
+        <code class="mono">ROBLOX_CREATOR_TYPE</code>, and <code class="mono">ROBLOX_CREATOR_ID</code> as
+        environment variables in your host's dashboard (Vercel → Project → Settings → Environment Variables;
+        Railway → Variables tab) and leave these three fields blank. The server fills them in automatically —
+        it's the official, ToS-compliant way to do this without touching the browser at all.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Lock Screen</h3>
+      <div class="settings-note">
+        The password is set in the site's source (<code class="mono">CONFIG.passwordHash</code> near the top
+        of the script) as a SHA-256 hash, not the plain password — change it before you deploy. This is a
+        simple front-door lock, not real access control; for anything sensitive, put the deployment behind
+        your host's own auth (e.g. Vercel's password protection) too.
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">Processing runs entirely in your browser — audio files never leave your device except when you choose to upload to Roblox.</div>
+</div>
+
+<script src="/rbxm-patcher.js"></script>
+<script>
+  // =========================================================
+  // CONFIG — change before deploying
+  // =========================================================
+  const CONFIG = {
+    // SHA-256 hash of the unlock password. Default below = "changeme".
+    // Generate your own in a browser console with:
+    //   crypto.subtle.digest('SHA-256', new TextEncoder().encode('yourpassword'))
+    //     .then(b => console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
+    passwordHash: "057ba03d6c44104863dc7361fe4578965d1887360f90a0895882e58a6248fc86",
+  };
+
+  async function sha256(str){
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return [...new Uint8Array(buf)].map(x=>x.toString(16).padStart(2,'0')).join('');
+  }
+
+  const lock = document.getElementById('lock');
+  const app = document.getElementById('app');
+  const lockInput = document.getElementById('lockInput');
+  const lockBtn = document.getElementById('lockBtn');
+  const lockErr = document.getElementById('lockErr');
+
+  async function tryUnlock(){
+    const hash = await sha256(lockInput.value);
+    if(hash === CONFIG.passwordHash || sessionStorage.getItem('unlocked') === '1'){
+      sessionStorage.setItem('unlocked', '1');
+      lock.classList.add('hidden');
+      app.classList.add('shown');
+    } else {
+      lockErr.textContent = 'Incorrect password.';
+      lockInput.value=''; lockInput.focus();
+    }
+  }
+  lockBtn.addEventListener('click', tryUnlock);
+  lockInput.addEventListener('keydown', e=>{ if(e.key==='Enter') tryUnlock(); });
+  if(sessionStorage.getItem('unlocked') === '1'){ tryUnlock(); }
+
+  // =========================================================
+  // Tabs
+  // =========================================================
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById('view-process').classList.toggle('hidden-view', t.dataset.view!=='process');
+      document.getElementById('view-assets').classList.toggle('hidden-view', t.dataset.view!=='assets');
+      document.getElementById('view-settings').classList.toggle('hidden-view', t.dataset.view!=='settings');
+    });
+  });
+
+  // Theme
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  document.documentElement.dataset.theme = savedTheme;
+  document.querySelectorAll('.theme-opt').forEach(o=>{
+    if(o.dataset.theme===savedTheme) o.classList.add('active');
+    o.addEventListener('click', ()=>{
+      document.querySelectorAll('.theme-opt').forEach(x=>x.classList.remove('active'));
+      o.classList.add('active');
+      document.documentElement.dataset.theme = o.dataset.theme;
+      localStorage.setItem('theme', o.dataset.theme);
+    });
+  });
+
+  // Roblox settings persistence
+  const robloxApiKey = document.getElementById('robloxApiKey');
+  const robloxCreatorType = document.getElementById('robloxCreatorType');
+  const robloxCreatorId = document.getElementById('robloxCreatorId');
+  robloxApiKey.value = localStorage.getItem('rbx_key') || '';
+  robloxCreatorType.value = localStorage.getItem('rbx_type') || 'User';
+  robloxCreatorId.value = localStorage.getItem('rbx_id') || '';
+  document.getElementById('saveRobloxBtn').addEventListener('click', ()=>{
+    localStorage.setItem('rbx_key', robloxApiKey.value);
+    localStorage.setItem('rbx_type', robloxCreatorType.value);
+    localStorage.setItem('rbx_id', robloxCreatorId.value);
+    document.getElementById('robloxSavedNote').textContent = 'Saved ✓';
+    setTimeout(()=> document.getElementById('robloxSavedNote').textContent='', 2000);
+  });
+
+  document.getElementById('testRobloxBtn').addEventListener('click', async () => {
+    const note = document.getElementById('testKeyNote');
+    note.textContent = 'Testing…';
+    const params = new URLSearchParams();
+    if(robloxApiKey.value.trim()) params.set('apiKey', robloxApiKey.value.trim());
+    if(robloxCreatorType.value) params.set('creatorType', robloxCreatorType.value);
+    if(robloxCreatorId.value.trim()) params.set('creatorId', robloxCreatorId.value.trim());
+    try{
+      const r = await fetch('/api/roblox/testkey?' + params.toString());
+      const data = await r.json();
+      note.textContent = JSON.stringify(data, null, 2);
+      note.style.whiteSpace = 'pre-wrap';
+    } catch(err){
+      note.textContent = 'Test request itself failed: ' + err.message;
+    }
+  });
+
+  fetch('/api/roblox/keystatus').then(r=>r.json()).then(s=>{
+    const el = document.getElementById('serverKeyStatus');
+    if(s.hasServerKey && s.hasCreatorId){
+      el.textContent = `Server-side key detected (Creator Type: ${s.creatorType || 'User'}) — everyone using ` +
+        `this deployment can upload without ever entering a key here.`;
+    } else {
+      el.textContent = 'No server-side key detected — each person will need to paste their own Open Cloud ' +
+        'API key above, or you can set ROBLOX_API_KEY/ROBLOX_CREATOR_TYPE/ROBLOX_CREATOR_ID as env vars on ' +
+        'your host so everyone shares one automatically.';
+    }
+  }).catch(()=>{
+    document.getElementById('serverKeyStatus').textContent = 'Could not check server key status.';
+  });
+
+  // Show-control whitelist (usernames allowed to trigger shows)
+  const WL_KEY = 'xr_whitelist_usernames';
+  const whitelistList = document.getElementById('whitelistList');
+  const whitelistNameInp = document.getElementById('whitelistNameInp');
+  const whitelistNote = document.getElementById('whitelistNote');
+
+  function loadWhitelist(){
+    try{ return JSON.parse(localStorage.getItem(WL_KEY) || '[]'); }
+    catch(e){ return []; }
+  }
+  function saveWhitelist(names){
+    localStorage.setItem(WL_KEY, JSON.stringify(names));
+  }
+  // Roblox usernames: letters, digits, single internal underscores, 3-20 chars.
+  function isValidRobloxUsername(name){
+    return /^[A-Za-z0-9_]{3,20}$/.test(name) && !name.startsWith('_') && !name.endsWith('_') && !name.includes('__');
+  }
+  function renderWhitelist(){
+    const names = loadWhitelist();
+    whitelistList.innerHTML = '';
+    if(names.length === 0){
+      whitelistList.innerHTML = '<span style="color:var(--text-faint); font-size:0.82rem;">No usernames added yet.</span>';
+      return;
+    }
+    names.forEach((name, i)=>{
+      const chip = document.createElement('span');
+      chip.className = 'mono';
+      chip.style.cssText = 'display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--border); border-radius:999px; font-size:0.82rem;';
+      chip.textContent = name;
+      const x = document.createElement('button');
+      x.textContent = '×';
+      x.setAttribute('aria-label', 'Remove ' + name);
+      x.style.cssText = 'background:none; border:none; cursor:pointer; font-size:0.95rem; line-height:1; color:var(--text-faint); padding:0;';
+      x.addEventListener('click', ()=>{
+        const cur = loadWhitelist();
+        cur.splice(i, 1);
+        saveWhitelist(cur);
+        renderWhitelist();
+      });
+      chip.appendChild(x);
+      whitelistList.appendChild(chip);
+    });
+  }
+  function addWhitelistName(){
+    const raw = whitelistNameInp.value.trim();
+    if(!raw) return;
+    if(!isValidRobloxUsername(raw)){
+      whitelistNote.textContent = `"${raw}" doesn't look like a valid Roblox username — skipped.`;
+      return;
+    }
+    const names = loadWhitelist();
+    if(names.some(n => n.toLowerCase() === raw.toLowerCase())){
+      whitelistNote.textContent = `${raw} is already on the list.`;
+      whitelistNameInp.value = '';
+      return;
+    }
+    names.push(raw);
+    saveWhitelist(names);
+    whitelistNameInp.value = '';
+    whitelistNote.textContent = '';
+    renderWhitelist();
+  }
+  document.getElementById('whitelistAddBtn').addEventListener('click', addWhitelistName);
+  whitelistNameInp.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addWhitelistName(); } });
+  renderWhitelist();
+
+  function xmlEscape(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function buildWhitelistLua(names){
+    const lines = names.map(n => `\t"${n}",`).join('\n');
+    return `-- Whitelist (ModuleScript) — place inside XrAudio folder\n` +
+      `-- Add or remove usernames from the list below.\n` +
+      `-- Generated from the Audio Prep Console Settings tab.\n\n` +
+      `local Whitelist = {\n${lines}\n}\n\nreturn Whitelist\n`;
+  }
+  function buildWhitelistRbxmx(names){
+    const source = buildWhitelistLua(names);
+    // ProtectedString bodies are plain-text (not CDATA) in Roblox's XML model format;
+    // angle brackets / ampersands inside the Lua source still need escaping.
+    return `<roblox xmlns:xmlne="http://www.roblox.com/roblox.1.dtd" version="4">\n` +
+      `  <Item class="ModuleScript" referent="RBX-Whitelist">\n` +
+      `    <Properties>\n` +
+      `      <string name="Name">Whitelist</string>\n` +
+      `      <ProtectedString name="Source">${xmlEscape(source)}</ProtectedString>\n` +
+      `    </Properties>\n` +
+      `  </Item>\n` +
+      `</roblox>\n`;
+  }
+  document.getElementById('whitelistDownloadBtn').addEventListener('click', ()=>{
+    const names = loadWhitelist();
+    if(names.length === 0){
+      whitelistNote.textContent = 'Add at least one username first.';
+      return;
+    }
+    const xml = buildWhitelistRbxmx(names);
+    const blob = new Blob([xml], {type: 'text/xml'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Whitelist.rbxmx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    whitelistNote.textContent = `Downloaded with ${names.length} username${names.length===1?'':'s'} ✓`;
+  });
+</script>
+
+<script type="module">
+import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js";
+import { toBlobURL, fetchFile } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js";
+
+const PLAYBACK_SPEED = 2.941;
+let ffmpeg = null;
+let ffmpegReady = false;
+let files = [];
+let outputBlobs = []; // {name, blob}
+let mode = 'song';
+let splitOn = true;
+
+// ---------- file list ----------
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileList = document.getElementById('fileList');
+
+document.querySelectorAll('.mode-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+  });
+});
+const splitSwitch = document.getElementById('splitSwitch');
+splitSwitch.addEventListener('click', ()=>{
+  splitOn = !splitOn;
+  splitSwitch.classList.toggle('on', splitOn);
+  updateChunkSizeNote();
+});
+
+function updateChunkSizeNote(){
+  const note = document.getElementById('chunkSizeNote');
+  const splitMinEl = document.getElementById('splitMin');
+  const fmt = document.getElementById('fmtSel').value;
+  const bitrateKbps = {ogg_hq:384, ogg_std:256, ogg:256, mp3:190, wav:1411}[fmt] ?? 256;
+  const splitMin = parseFloat(splitMinEl.value) || 0;
+  const encodedSecs = (splitMin*60) / PLAYBACK_SPEED; // actual on-disk duration per chunk
+  const estMB = (bitrateKbps*1000/8 * encodedSecs) / (1024*1024);
+  const VERCEL_LIMIT_MB = 4.5;
+  if(!splitOn){ note.textContent = ''; return; }
+  const over = estMB > VERCEL_LIMIT_MB * 0.9;
+  note.innerHTML = `Estimated size per chunk: <b>${estMB.toFixed(1)} MB</b>` +
+    (over
+      ? ` — this is close to or over Vercel's ~4.5MB serverless upload limit and will likely 413/crash the upload. Lower the chunk length, drop the bitrate, or deploy via Railway (server.js) instead, which doesn't have this cap.`
+      : ` — comfortably under typical serverless (Vercel) upload limits.`);
+  note.style.color = over ? 'var(--danger)' : 'var(--text-dim)';
+}
+['splitMin'].forEach(id=> document.getElementById(id).addEventListener('input', updateChunkSizeNote));
+document.getElementById('fmtSel').addEventListener('change', updateChunkSizeNote);
+updateChunkSizeNote();
+
+dropzone.addEventListener('click', ()=> fileInput.click());
+dropzone.addEventListener('dragover', e=>{e.preventDefault(); dropzone.classList.add('drag');});
+dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e=>{ e.preventDefault(); dropzone.classList.remove('drag'); addFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', e=> addFiles(e.target.files));
+
+function addFiles(list){
+  for(const f of list) if(!files.find(x=>x.name===f.name && x.size===f.size)) files.push(f);
+  renderFileList();
+}
+function renderFileList(){
+  fileList.innerHTML='';
+  files.forEach((f, i)=>{
+    const div = document.createElement('div');
+    div.className='fileitem';
+    div.innerHTML = `<span>${f.name}</span><span>${(f.size/1048576).toFixed(1)} MB <span class="rm" data-i="${i}">✕</span></span>`;
+    fileList.appendChild(div);
+  });
+  fileList.querySelectorAll('.rm').forEach(el=>{
+    el.addEventListener('click', e=>{ e.stopPropagation(); files.splice(parseInt(el.dataset.i),1); renderFileList(); });
+  });
+}
+
+function setStatus(msg){ document.getElementById('statusLine').textContent = msg; }
+function setBar(id, ratio){ document.getElementById(id).style.width = Math.round(Math.max(0,Math.min(1,ratio))*100)+'%'; }
+function log(msg, cls='info'){
+  const c = document.getElementById('consoleLog');
+  const line = document.createElement('div');
+  line.className = 'lg-'+cls;
+  line.textContent = msg;
+  c.appendChild(line);
+  c.scrollTop = c.scrollHeight;
+}
+function fmtTime(s){ const m=Math.floor(s/60), sec=Math.floor(s%60); return String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0'); }
+
+// ---------- engine load with real progress ----------
+const ENGINE_CACHE = 'audio-prep-engine-v1';
+
+async function fetchWithProgress(url, onProgress){
+  // Serve from the persistent engine cache when we have it — makes every
+  // load after the first one near-instant instead of re-downloading ~30MB.
+  let cache = null;
+  try{ cache = await caches.open(ENGINE_CACHE); }catch(e){ /* cache API unavailable, fall back to network only */ }
+  if(cache){
+    const cached = await cache.match(url);
+    if(cached){ onProgress(1); return await cached.blob(); }
+  }
+
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(`Failed to fetch ${url} (${res.status})`);
+
+  // NOTE: content-length reflects the *compressed* transfer size, but the
+  // bytes we read back from the stream are already decompressed by the
+  // browser — so received can exceed total. Clamp so progress never shows
+  // more than 100%.
+  const total = parseInt(res.headers.get('content-length') || '0');
+  const reader = res.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while(true){
+    const {done, value} = await reader.read();
+    if(done) break;
+    chunks.push(value);
+    received += value.length;
+    if(total) onProgress(Math.min(1, received/total));
+  }
+  const blob = new Blob(chunks);
+  if(cache){
+    try{ await cache.put(url, new Response(blob)); }catch(e){ /* quota etc — non-fatal */ }
+  }
+  return blob;
+}
+
+function withTimeout(promise, ms, label){
+  let timer;
+  const timeout = new Promise((_, reject)=>{
+    timer = setTimeout(()=> reject(new Error(`${label} timed out after ${Math.round(ms/1000)}s — check your connection and try again`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(()=> clearTimeout(timer));
+}
+
+// Fetches a small text file through the same engine cache used for the
+// core/wasm blobs, so repeat loads don't re-fetch it.
+async function fetchCachedText(url){
+  let cache = null;
+  try{ cache = await caches.open(ENGINE_CACHE); }catch(e){ /* ignore */ }
+  if(cache){
+    const cached = await cache.match(url);
+    if(cached) return await cached.text();
+  }
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(`Failed to fetch ${url} (${res.status})`);
+  const text = await res.text();
+  if(cache){
+    try{ await cache.put(url, new Response(text)); }catch(e){ /* ignore */ }
+  }
+  return text;
+}
+
+// Builds a self-contained worker script with zero external references.
+// @ffmpeg/ffmpeg's worker.js is an ES module that statically imports
+// './const.js' and './errors.js'. Two problems stack on top of each other
+// if you try to use it straight from a CDN:
+//   1) Browsers refuse to construct a Worker from a cross-origin script URL
+//      at all — that restriction is stricter than fetch's CORS rules, no
+//      response header fixes it ("cannot be accessed from origin ...").
+//   2) Blobbing worker.js by itself dodges #1 but breaks its relative
+//      imports, since a blob: URL has no base path for them to resolve
+//      against — the worker then fails to come up and ffmpeg.load() hangs
+//      with no error at all.
+// Fetching all three files and inlining const.js/errors.js's exports as
+// plain top-level declarations (stripping import/export syntax) produces
+// one flat script with no external references, so it works fine as a
+// blob: URL worker regardless of the page's origin.
+async function buildInlinedWorkerBlobURL(ffBase){
+  const [workerSrc, constSrc, errorsSrc] = await Promise.all([
+    fetchCachedText(`${ffBase}/worker.js`),
+    fetchCachedText(`${ffBase}/const.js`),
+    fetchCachedText(`${ffBase}/errors.js`),
+  ]);
+  const inlinedConst = constSrc.replace(/^export\s+/gm, '');
+  const inlinedErrors = errorsSrc.replace(/^export\s+/gm, '');
+  const inlinedWorker = workerSrc.replace(/^import\s*\{[^}]*\}\s*from\s*["'][^"']+["'];?\s*$/gm, '');
+  const combined = `${inlinedConst}\n${inlinedErrors}\n${inlinedWorker}`;
+  return URL.createObjectURL(new Blob([combined], {type:'text/javascript'}));
+}
+
+async function ensureEngine(){
+  if(ffmpegReady) return;
+  document.getElementById('engineTxt').textContent = '0%';
+  log('Loading processing engine…', 'header');
+  ffmpeg = new FFmpeg();
+  ffmpeg.on('log', ({message})=>{ window.__lastFF = (window.__lastFF||'') + message + '\n'; });
+
+  const coreBase = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+  const ffBase = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+
+  const parts = { core:0, wasm:0 };
+  const weight = { core:0.15, wasm:0.85 };
+  function overall(){ return parts.core*weight.core + parts.wasm*weight.wasm; }
+  function bump(){ const p = Math.min(1, overall()); setBar('engineBar', p); document.getElementById('engineTxt').textContent = Math.round(p*100)+'%'; }
+
+  // Fetch core + wasm (parallel) and the tiny worker source files (parallel)
+  // together — the worker files are a few KB and don't need progress UI.
+  const [[coreBlob, wasmBlob], workerBlobURL] = await withTimeout(
+    Promise.all([
+      Promise.all([
+        fetchWithProgress(`${coreBase}/ffmpeg-core.js`, r=>{parts.core=r; bump();}),
+        fetchWithProgress(`${coreBase}/ffmpeg-core.wasm`, r=>{parts.wasm=r; bump();}),
+      ]),
+      buildInlinedWorkerBlobURL(ffBase),
+    ]),
+    45000,
+    'Engine download'
+  );
+
+  await withTimeout(ffmpeg.load({
+    coreURL: URL.createObjectURL(new Blob([coreBlob], {type:'text/javascript'})),
+    wasmURL: URL.createObjectURL(new Blob([wasmBlob], {type:'application/wasm'})),
+    classWorkerURL: workerBlobURL,
+  }), 20000, 'Engine initialization');
+
+  ffmpegReady = true;
+  setBar('engineBar', 1);
+  document.getElementById('engineTxt').textContent = 'ready';
+  log('   Engine ready', 'good');
+}
+
+async function ffrun(args){ window.__lastFF=''; await ffmpeg.exec(args); return window.__lastFF; }
+function parseDuration(o){ const m=o.match(/Duration:\s*(\d+):(\d+):([\d.]+)/); return m?(+m[1])*3600+(+m[2])*60+parseFloat(m[3]):null; }
+function parseSampleRate(o){ const m=o.match(/(\d+)\s*Hz/); return m?parseInt(m[1]):44100; }
+function parseVolume(o){ const mean=o.match(/mean_volume:\s*(-?[\d.]+)/); const max=o.match(/max_volume:\s*(-?[\d.]+)/); return {mean:mean?parseFloat(mean[1]):null, max:max?parseFloat(max[1]):null}; }
+
+function buildFilterChain(mode, sr, volLinear, noiseReduction){
+  const lowRate = Math.round(sr / PLAYBACK_SPEED);
+  let filters = ['aformat=sample_fmts=fltp'];
+  if(mode === 'concert'){
+    filters.push('alimiter=level_in=1:level_out=1:limit=0.80:attack=0.5:release=30:level=disabled');
+    filters.push('highpass=f=40:poles=2', 'highpass=f=20:poles=1');
+    const nrMap = {off:'afftdn=nr=8:nf=-35:nt=w:om=o', light:'afftdn=nr=12:nf=-40:nt=w:om=o', medium:'afftdn=nr=25:nf=-50:nt=w:om=o', strong:'afftdn=nr=40:nf=-55:nt=w:om=o', max:'afftdn=nr=50:nf=-60:nt=w:om=o'};
+    filters.push(nrMap[noiseReduction]);
+    if(noiseReduction==='strong'||noiseReduction==='max') filters.push('afftdn=nr=15:nf=-60:nt=w:om=o');
+    if(noiseReduction==='max') filters.push('afftdn=nr=20:nf=-65:nt=w:om=o');
+    const anlm = {off:0.0003, light:0.0003, medium:0.0012, strong:0.003, max:0.006}[noiseReduction];
+    filters.push(`anlmdn=s=${anlm}:p=0.002:r=0.004:m=15`);
+    if(noiseReduction==='medium'||noiseReduction==='strong'||noiseReduction==='max') filters.push('equalizer=f=10000:t=h:w=0.5:g=1.5');
+    filters.push('lowpass=f=16000:poles=2', 'lowpass=f=15000:poles=2');
+    filters.push('agate=threshold=0.00398:attack=15:release=800:ratio=6:makeup=1');
+    filters.push(`asetrate=${lowRate}`, 'aresample=44100:resampler=swr:filter_size=512:cutoff=0.93:precision=28');
+  } else {
+    filters.push('alimiter=level_in=1:level_out=1:limit=0.95:attack=1:release=50:level=disabled');
+    filters.push('highpass=f=20', 'lowpass=f=16000:poles=2', 'lowpass=f=15000:poles=2');
+    if(noiseReduction !== 'off'){
+      const nrMap = {light:'afftdn=nr=8:nf=-35:nt=w:om=o', medium:'afftdn=nr=18:nf=-45:nt=w:om=o', strong:'afftdn=nr=30:nf=-50:nt=w:om=o', max:'afftdn=nr=42:nf=-58:nt=w:om=o'};
+      filters.push(nrMap[noiseReduction]);
+      if(noiseReduction==='max') filters.push('afftdn=nr=18:nf=-62:nt=w:om=o');
+      if(noiseReduction==='medium'||noiseReduction==='strong'||noiseReduction==='max'){
+        const s2 = {medium:0.0008, strong:0.0015, max:0.0025}[noiseReduction];
+        filters.push(`anlmdn=s=${s2}:p=0.002:r=0.004:m=15`);
+      }
+    }
+    filters.push(`asetrate=${lowRate}`, 'aresample=44100:resampler=swr:filter_size=512:cutoff=0.93:precision=28');
+    filters.push('agate=threshold=0.00316:attack=20:release=250:ratio=10:makeup=1');
+  }
+  filters.push(`volume=${volLinear.toFixed(8)}`);
+  filters.push('alimiter=level_in=1:level_out=1:limit=0.891:attack=5:release=50:level=disabled');
+  return filters.join(',');
+}
+function codecArgsFor(fmt){
+  if(fmt==='ogg_hq') return {ext:'ogg', args:['-codec:a','libvorbis','-b:a','384k']};
+  if(fmt==='ogg_std'||fmt==='ogg') return {ext:'ogg', args:['-codec:a','libvorbis','-b:a','256k']};
+  if(fmt==='mp3') return {ext:'mp3', args:['-codec:a','libmp3lame','-q:a','0']};
+  if(fmt==='wav') return {ext:'wav', args:['-codec:a','pcm_s16le']};
+  return {ext:'ogg', args:['-codec:a','libvorbis','-b:a','256k']};
+}
+function extOf(name){ const m=name.match(/\.[^/.]+$/); return m?m[0]:'.dat'; }
+
+async function processOne(file, idx, total, opts){
+  const inName = `in_${idx}${extOf(file.name)}`;
+  const tmpWav = `tmp_${idx}.wav`;
+  await ffmpeg.writeFile(inName, await fetchFile(file));
+
+  setStatus(`(${idx+1}/${total}) Probing: ${file.name}`);
+  const probeOut = await ffrun(['-i', inName]);
+  const sr = parseSampleRate(probeOut);
+  const volLinear = Math.pow(10, opts.volDb/20);
+  const chain = buildFilterChain(opts.mode, sr, volLinear, opts.noise);
+
+  log(`\n${'='.repeat(40)}`, 'separator');
+  log(`FILE ${idx+1}/${total}: ${file.name}`, 'header');
+  log(`${'='.repeat(40)}`, 'separator');
+  log('Encoding (pitch shift + chain)…', 'header');
+  setStatus(`(${idx+1}/${total}) Encoding: ${file.name}`);
+  setBar('stageBar', 0.15);
+
+  await ffrun(['-y','-i', inName, '-af', chain, '-ar','44100','-codec:a','pcm_f32le', tmpWav]);
+  log('   Encode complete', 'good');
+  setBar('stageBar', 0.4);
+
+  setStatus(`(${idx+1}/${total}) QC scan: ${file.name}`);
+  log('Quick QC — peak & mean level…', 'header');
+  const qcOut = await ffrun(['-i', tmpWav, '-af', 'volumedetect', '-f','null','-']);
+  const vol = parseVolume(qcOut);
+  if(vol.max !== null){
+    log(`   Peak: ${vol.max.toFixed(1)} dBFS`, 'info');
+    log(vol.max > -0.5 ? '   Hot — close to clipping' : '   Healthy peak level', vol.max > -0.5 ? 'warning' : 'good');
+  }
+  setBar('stageBar', 0.6);
+
+  const durOut = await ffrun(['-i', tmpWav]);
+  const totalDur = parseDuration(durOut) || 0;
+  log(`   Duration on disk: ${fmtTime(totalDur)} (plays as ${fmtTime(totalDur*PLAYBACK_SPEED)} in Roblox)`, 'info');
+
+  const {ext, args: codecArgs} = codecArgsFor(opts.fmt);
+  const baseName = file.name.replace(/\.[^/.]+$/, '') + opts.suffix;
+  const outputs = [];
+
+  if(opts.split){
+    const chunkSecs = (opts.splitMin*60) / PLAYBACK_SPEED;
+    const numChunks = Math.max(1, Math.ceil(totalDur / chunkSecs));
+    log(`Splitting into ${numChunks} chunk(s) of ${opts.splitMin} min (Roblox time) each…`, 'header');
+    for(let c=0;c<numChunks;c++){
+      const start = c*chunkSecs;
+      const remaining = totalDur - start;
+      const dur = Math.min(chunkSecs, remaining);
+      if(dur <= 0.05) break;
+      const outName = `${baseName}_part${c+1}.${ext}`;
+      await ffrun(['-y','-ss', start.toFixed(6), '-i', tmpWav, '-t', dur.toFixed(6), '-ar','44100', ...codecArgs, outName]);
+      const data = await ffmpeg.readFile(outName);
+      outputs.push({name: outName, blob: new Blob([data.buffer], {type:'audio/'+ext})});
+      log(`   ${outName}`, 'good');
+      setBar('stageBar', 0.6 + 0.35*((c+1)/numChunks));
+      await ffmpeg.deleteFile(outName);
+    }
+  } else {
+    const outName = `${baseName}.${ext}`;
+    await ffrun(['-y','-i', tmpWav, '-ar','44100', ...codecArgs, outName]);
+    const data = await ffmpeg.readFile(outName);
+    outputs.push({name: outName, blob: new Blob([data.buffer], {type:'audio/'+ext})});
+    log(`   ${outName}`, 'good');
+    await ffmpeg.deleteFile(outName);
+  }
+
+  await ffmpeg.deleteFile(inName);
+  await ffmpeg.deleteFile(tmpWav);
+  setBar('stageBar', 1);
+  log(`${file.name} -> ${outputs.length} file(s)`, 'good');
+  return outputs;
+}
+
+function renderOutputs(){
+  const list = document.getElementById('outputsList');
+  const empty = document.getElementById('outputsEmpty');
+  const zipBtn = document.getElementById('zipBtn');
+  const uploadAllBtn = document.getElementById('uploadAllBtn');
+  list.innerHTML = '';
+  const showBuildBlock = document.getElementById('showBuildBlock');
+  if(outputBlobs.length===0){ empty.style.display='block'; zipBtn.style.display='none'; uploadAllBtn.style.display='none'; showBuildBlock.style.display='none'; return; }
+  empty.style.display='none';
+  zipBtn.style.display='block';
+  uploadAllBtn.style.display='block';
+  showBuildBlock.style.display='block';
+  outputBlobs.forEach((o, i)=>{
+    const url = URL.createObjectURL(o.blob);
+    const div = document.createElement('div');
+    div.className='outfile';
+    div.innerHTML = `<span class="name">${o.name}</span>
+      <span class="assetid mono" id="assetid-${i}">${o.assetId ? o.assetId : ''}</span>
+      <a class="btn-sm" href="${url}" download="${o.name}">Download</a>
+      <button class="btn-sm" data-i="${i}" data-action="upload">${o.assetId ? 'Re-upload' : 'Upload to Roblox'}</button>
+      <input class="btn-sm mono" style="width:130px;" data-i="${i}" data-action="pasteid" placeholder="or paste asset ID" value="">
+      <button class="btn-sm" data-i="${i}" data-action="savepasteid">Use ID</button>`;
+    list.appendChild(div);
+  });
+  list.querySelectorAll('[data-action="upload"]').forEach(btn=>{
+    btn.addEventListener('click', ()=> uploadOne(parseInt(btn.dataset.i)));
+  });
+  list.querySelectorAll('[data-action="savepasteid"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = parseInt(btn.dataset.i);
+      const input = list.querySelector(`[data-action="pasteid"][data-i="${i}"]`);
+      const raw = input.value.trim().replace(/^rbxassetid:\/\//,'').replace(/\D/g,'');
+      if(!raw){ alert('Paste a numeric Roblox asset ID (or an rbxassetid:// URL).'); return; }
+      outputBlobs[i].assetId = raw;
+      log(`   Asset ID set manually for ${outputBlobs[i].name}: ${raw}`, 'good');
+      renderOutputs();
+    });
+  });
+}
+
+async function uploadOne(i){
+  const o = outputBlobs[i];
+  const key = localStorage.getItem('rbx_key');
+  const type = localStorage.getItem('rbx_type') || 'User';
+  const id = localStorage.getItem('rbx_id');
+  if(!key || !id){ alert('Add your Roblox API key and creator ID in Settings first.'); return; }
+
+  const btn = document.querySelector(`[data-action="upload"][data-i="${i}"]`);
+  if(btn){ btn.disabled = true; btn.textContent = 'Uploading…'; }
+  log(`Uploading ${o.name} to Roblox…`, 'header');
+  try{
+    const form = new FormData();
+    form.append('audio', o.blob, o.name);
+    form.append('displayName', o.name.replace(/\.[^/.]+$/, ''));
+    form.append('apiKey', key);
+    form.append('creatorType', type);
+    form.append('creatorId', id);
+
+    const res = await fetch('/api/roblox/upload', { method:'POST', body: form });
+    const raw = await res.text();
+    let data;
+    try{ data = JSON.parse(raw); }
+    catch{
+      const looksLikeSizeLimit = /entity too large|payload too large|413/i.test(raw);
+      throw new Error(
+        looksLikeSizeLimit
+          ? `Server rejected the file as too large (host body-size limit, not a Roblox error). This chunk is bigger than your host allows in one request — lower "Target length per chunk" in the Process tab, or deploy via Railway/server.js instead of Vercel serverless, which doesn't have this cap.`
+          : `Server returned a non-JSON error (${res.status}): ${raw.slice(0,200)}`
+      );
+    }
+    if(!res.ok || data.error) throw new Error(data.error || `Upload failed (${res.status})`);
+    outputBlobs[i].assetId = data.assetId;
+    log(`   Asset ID: ${data.assetId} (rbxassetid://${data.assetId})`, 'good');
+  }catch(err){
+    log(`   Upload failed: ${err.message}`, 'critical');
+    alert('Upload failed: ' + err.message);
+  }
+  if(btn){ btn.disabled = false; }
+  renderOutputs();
+}
+
+document.getElementById('uploadAllBtn').addEventListener('click', async ()=>{
+  for(let i=0;i<outputBlobs.length;i++){
+    if(!outputBlobs[i].assetId) await uploadOne(i);
+  }
+  const ids = outputBlobs.filter(o=>o.assetId).map(o=>`"rbxassetid://${o.assetId}", -- ${o.name}`).join('\n');
+  if(ids){ log('\nAsset IDs (paste into the Roblox player TRACKS table):\n'+ids, 'header'); }
+});
+
+function sanitizeInstanceName(s){
+  return s.replace(/[^\w \-\.]/g, '').trim().slice(0, 50) || 'Track';
+}
+function xmlEscapeShow(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function buildShowRbxmx(showName, tracks){
+  // tracks: [{name, assetId}], written in this order — Studio preserves file order
+  // as insertion order, which is what the AudioServer script falls back to sorting
+  // stably by when Tracknumber isn't set on a track.
+  const soundItems = tracks.map((t, i)=>{
+    const num = String(i+1).padStart(2,'0');
+    const nm = xmlEscapeShow(`${num}_${sanitizeInstanceName(t.name.replace(/\.[^/.]+$/,''))}`);
+    return `    <Item class="Sound" referent="RBX-Sound-${i}">\n` +
+      `      <Properties>\n` +
+      `        <string name="Name">${nm}</string>\n` +
+      `        <string name="SoundId">rbxassetid://${t.assetId}</string>\n` +
+      `        <bool name="Looped">false</bool>\n` +
+      `        <float name="Volume">1</float>\n` +
+      `      </Properties>\n` +
+      `    </Item>`;
+  }).join('\n');
+  return `<roblox xmlns:xmlne="http://www.roblox.com/roblox.1.dtd" version="4">\n` +
+    `  <Item class="Folder" referent="RBX-Show">\n` +
+    `    <Properties>\n` +
+    `      <string name="Name">${xmlEscapeShow(showName)}</string>\n` +
+    `    </Properties>\n` +
+    soundItems + `\n` +
+    `  </Item>\n` +
+    `</roblox>\n`;
+}
+
+document.getElementById('buildShowBtn').addEventListener('click', async ()=>{
+  const showBuildNote = document.getElementById('showBuildNote');
+  const showName = document.getElementById('showNameInp').value.trim();
+  if(!showName){ alert('Give the show a name first.'); return; }
+  if(outputBlobs.length === 0){ alert('Process some audio first.'); return; }
+
+  const btn = document.getElementById('buildShowBtn');
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  for(let i=0;i<outputBlobs.length;i++){
+    if(!outputBlobs[i].assetId) await uploadOne(i);
+  }
+  const withIds = outputBlobs.filter(o=>o.assetId);
+  const missing = outputBlobs.length - withIds.length;
+  if(withIds.length === 0){
+    btn.disabled = false; btn.textContent = 'Upload All & Build Show';
+    alert('No tracks uploaded successfully — nothing to build.');
+    return;
+  }
+
+  btn.textContent = 'Building show…';
+  const xml = buildShowRbxmx(showName, withIds);
+  const blob = new Blob([xml], {type:'text/xml'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${sanitizeInstanceName(showName)}.rbxmx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+
+  log(`\nBuilt show "${showName}" with ${withIds.length} track(s)${missing? ` (${missing} failed to upload — skipped)`:''}.`, 'header');
+  showBuildNote.textContent = `Downloaded "${showName}.rbxmx" with ${withIds.length} track${withIds.length===1?'':'s'} ✓ — ` +
+    `tracks preload/play in this file's order; open each Sound's Attributes in Studio to set a Tracknumber if you want to reorder later.`;
+  btn.disabled = false; btn.textContent = 'Upload All & Build Show';
+});
+
+// ---------- Build & Download Updated XrAudioSystem.rbxm (in-place patch) ----------
+function sanitizeTrackLabel(i, name){
+  const clean = (name || 'Track').replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 40) || 'Track';
+  return `${String(i + 1).padStart(2, '0')}_${clean}`;
+}
+
+const OLD_SORT_SNIPPET = 'table.sort(tracks, function(a, b)\n\t\treturn (a:GetAttribute("Tracknumber") or 0) < (b:GetAttribute("Tracknumber") or 0)\n\tend)';
+const NEW_SORT_SNIPPET = 'table.sort(tracks, function(a, b)\n\t\tlocal an, bn = a:GetAttribute("Tracknumber"), b:GetAttribute("Tracknumber")\n\t\tif an or bn then return (an or 0) < (bn or 0) end\n\t\treturn a.Name < b.Name -- fallback: alphabetical (zero-padded names sort correctly)\n\tend)';
+function fixServerSource(src){
+  // Skip empty-SoundId slots entirely so unused template slots never enter the
+  // preload/schedule loop (previously: a 30s TimeLength wait per unused slot).
+  let out = src.replace(
+    'if child:IsA("Sound") then\n\t\t\ttable.insert(tracks, child)\n\t\tend',
+    'if child:IsA("Sound") and child.SoundId ~= "" then\n\t\t\ttable.insert(tracks, child)\n\t\tend'
+  );
+  if(out.includes(OLD_SORT_SNIPPET)) out = out.replace(OLD_SORT_SNIPPET, NEW_SORT_SNIPPET);
+  return out;
+}
+
+// Safe, conservative Lua "minifier": strips full-line and trailing `--` comments
+// and blank lines only. Does not rename locals (too easy to break with a naive
+// regex — e.g. inside strings), so this is genuine minification, not obfuscation.
+function minifyLua(src){
+  return src
+    .split('\n')
+    .map(line => {
+      // don't touch lines that contain a string literal with -- inside it (rough heuristic)
+      if(/["'].*--.*["']/.test(line)) return line;
+      return line.replace(/\s*--(?!\[).*$/, '');
+    })
+    .filter(line => line.trim().length > 0)
+    .join('\n');
+}
+
+document.getElementById('buildRbxmBtn').addEventListener('click', async () => {
+  const note = document.getElementById('buildRbxmNote');
+  const btn = document.getElementById('buildRbxmBtn');
+  const showName = document.getElementById('showNameInp').value.trim();
+  if(!showName){ alert('Give the show a name first (in the Show panel above).'); return; }
+
+  btn.disabled = true; btn.textContent = 'Building…';
+  try{
+    const resp = await fetch('/roblox/XrAudioSystem.rbxm');
+    if(!resp.ok) throw new Error(`Couldn't load the base template (${resp.status})`);
+    const buf = new Uint8Array(await resp.arrayBuffer());
+    const parsed = RbxmPatcher.parseFile(buf);
+    const overrides = new Map();
+
+    // 1. Rename the show folder (the one Folder that isn't XrAudio/Shows)
+    const folders = RbxmPatcher.findAllInstances(parsed, 'Folder');
+    const showFolder = folders.find(f => f.name !== 'XrAudio' && f.name !== 'Shows');
+    if(showFolder){
+      const idx = RbxmPatcher.findPropChunkIndex(parsed, 'Folder', 'Name');
+      overrides.set(idx, RbxmPatcher.patchStringProp(parsed.chunks[idx], showFolder.index, showName));
+    }
+
+    // 2. Fill Sound slots from this session's uploaded tracks (blank out unused slots)
+    const sounds = RbxmPatcher.findAllInstances(parsed, 'Sound');
+    const tracks = outputBlobs.filter(o => o.assetId);
+    if(tracks.length > sounds.length){
+      throw new Error(`This template has ${sounds.length} track slots; you have ${tracks.length} uploaded. ` +
+        `Trim the set, or let me know and I can rebuild the template with more slots.`);
+    }
+    const nameIdx = RbxmPatcher.findPropChunkIndex(parsed, 'Sound', 'Name');
+    const idIdx = RbxmPatcher.findPropChunkIndex(parsed, 'Sound', 'SoundId');
+    const names = RbxmPatcher.readStringPropValues(parsed.chunks[nameIdx]);
+    const ids = RbxmPatcher.readStringPropValues(parsed.chunks[idIdx]);
+    sounds.forEach((slot, i) => {
+      const t = tracks[i];
+      names[slot.index] = t ? sanitizeTrackLabel(i, t.name) : `_unused_${i + 1}`;
+      ids[slot.index] = t ? `rbxassetid://${t.assetId}` : '';
+    });
+    overrides.set(nameIdx, RbxmPatcher.writeStringPropAll(parsed.chunks[nameIdx], names));
+    overrides.set(idIdx, RbxmPatcher.writeStringPropAll(parsed.chunks[idIdx], ids));
+
+    // 3. Bake in the whitelist
+    const wlIdx = RbxmPatcher.findPropChunkIndex(parsed, 'ModuleScript', 'Source');
+    const wlNames = JSON.parse(localStorage.getItem('xr_whitelist_usernames') || '[]');
+    const wlSource = 'local Whitelist = {\n' + wlNames.map(n => `\t"${n}",`).join('\n') +
+      (wlNames.length ? '\n' : '') + '}\n\nreturn Whitelist\n';
+    overrides.set(wlIdx, RbxmPatcher.patchStringProp(parsed.chunks[wlIdx], 0, wlSource));
+
+    // 4. Fix Server's track-collection bug + optional minify (Server/Commands/AudioClient only)
+    const obfuscate = document.getElementById('obfuscateChk').checked;
+    const scriptSrcIdx = RbxmPatcher.findPropChunkIndex(parsed, 'Script', 'Source');
+    const scripts = RbxmPatcher.findAllInstances(parsed, 'Script');
+    const scriptValues = RbxmPatcher.readStringPropValues(parsed.chunks[scriptSrcIdx]);
+    scripts.forEach(s => {
+      let v = scriptValues[s.index];
+      if(s.name === 'Server') v = fixServerSource(v);
+      if(obfuscate) v = minifyLua(v);
+      scriptValues[s.index] = v;
+    });
+    overrides.set(scriptSrcIdx, RbxmPatcher.writeStringPropAll(parsed.chunks[scriptSrcIdx], scriptValues));
+
+    if(obfuscate){
+      const localScripts = RbxmPatcher.findAllInstances(parsed, 'LocalScript');
+      if(localScripts.length){
+        const lsIdx = RbxmPatcher.findPropChunkIndex(parsed, 'LocalScript', 'Source');
+        const lsValues = RbxmPatcher.readStringPropValues(parsed.chunks[lsIdx]);
+        localScripts.forEach(s => { lsValues[s.index] = minifyLua(lsValues[s.index]); });
+        overrides.set(lsIdx, RbxmPatcher.writeStringPropAll(parsed.chunks[lsIdx], lsValues));
+      }
+    }
+
+    const rebuilt = RbxmPatcher.rebuildFile(parsed, overrides);
+
+    // Sanity check before handing it to the user: re-parse our own output.
+    RbxmPatcher.parseFile(rebuilt);
+
+    const blob = new Blob([rebuilt], {type: 'application/octet-stream'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'XrAudioSystem.rbxm';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    note.textContent = `Built "${showName}" with ${tracks.length} track${tracks.length===1?'':'s'} and ` +
+      `${wlNames.length} whitelisted user${wlNames.length===1?'':'s'} ✓ — insert this .rbxm the same way as ` +
+      `before (right-click a service → Insert from File).`;
+  } catch(err){
+    note.textContent = `Build failed: ${err.message}`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Build & Download Updated XrAudioSystem.rbxm';
+  }
+});
+
+document.getElementById('zipBtn').addEventListener('click', async ()=>{
+  const JSZip = (await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm')).default;
+  const zip = new JSZip();
+  outputBlobs.forEach(o=> zip.file(o.name, o.blob));
+  const blob = await zip.generateAsync({type:'blob'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'processed_audio.zip'; a.click();
+});
+
+document.getElementById('processBtn').addEventListener('click', async ()=>{
+  if(files.length===0){ alert('Add at least one audio file first.'); return; }
+  const btn = document.getElementById('processBtn');
+  btn.disabled = true; btn.textContent = 'Processing…';
+  outputBlobs = [];
+  document.getElementById('consoleLog').innerHTML='';
+  renderOutputs();
+
+  try{
+    await ensureEngine();
+    const opts = {
+      mode,
+      volDb: parseFloat(document.getElementById('volSel').value),
+      noise: document.getElementById('noiseSel').value,
+      fmt: document.getElementById('fmtSel').value,
+      suffix: document.getElementById('suffixInp').value,
+      split: splitOn,
+      splitMin: parseFloat(document.getElementById('splitMin').value),
+    };
+    for(let i=0;i<files.length;i++){
+      document.getElementById('fileProgTxt').textContent = `${i}/${files.length}`;
+      setBar('fileBar', i/files.length);
+      const outs = await processOne(files[i], i, files.length, opts);
+      outputBlobs.push(...outs);
+      renderOutputs();
+    }
+    document.getElementById('fileProgTxt').textContent = `${files.length}/${files.length}`;
+    setBar('fileBar', 1);
+    setStatus(`Done — ${files.length} file(s) -> ${outputBlobs.length} chunk(s)`);
+  }catch(err){
+    console.error(err);
+    log('ERROR: ' + err.message, 'critical');
+    setStatus('Failed — see log for details.');
+  }
+  btn.disabled = false; btn.textContent = 'Process Files';
+});
+</script>
+</body>
+</html>
