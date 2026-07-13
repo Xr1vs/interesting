@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Audio Prep Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#131108;
+    --bg-grain:#161310;
+    --panel:#1c1913;
+    --panel-raised:#232016;
+    --hairline:#3a3324;
+    --hairline-lit:#4d4530;
+    --text:#ece4d0;
+    --text-dim:#8f8770;
+    --text-faint:#5f5847;
+    --amber:#ffb020;
+    --amber-dim:#7a5c1f;
+    --red:#ff4d3d;
+    --green:#5ce488;
+    --screw:#0d0b06;
+    font-size:16px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse at top, #1a170f 0%, var(--bg) 55%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+    color:var(--text);
+    font-family:'JetBrains Mono', monospace;
+    min-height:100vh;
+    padding:40px 20px 80px;
+  }
+  .display{font-family:'Big Shoulders Display', sans-serif; font-weight:800; text-transform:uppercase;}
+
+  .rig{max-width:920px; margin:0 auto;}
+
+  .masthead{
+    display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom:2px solid var(--hairline-lit);
+    padding-bottom:18px; margin-bottom:28px;
+  }
+  .masthead h1{
+    font-size:2.6rem; letter-spacing:0.5px; margin:0; color:var(--text);
+    line-height:1;
+  }
+  .masthead .unit-tag{
+    font-size:0.72rem; color:var(--text-faint); letter-spacing:2px;
+    text-align:right; line-height:1.5;
+  }
+  .masthead .unit-tag b{color:var(--amber);}
+
+  .rack-unit{
+    position:relative;
+    background:linear-gradient(180deg, var(--panel-raised), var(--panel));
+    border:1px solid var(--hairline);
+    border-radius:6px;
+    padding:22px 26px 26px;
+    margin-bottom:22px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 18px rgba(0,0,0,0.35);
+  }
+  .rack-unit::before, .rack-unit::after{
+    content:""; position:absolute; top:10px; width:7px; height:7px; border-radius:50%;
+    background:radial-gradient(circle at 35% 35%, #57503c, var(--screw) 70%);
+    box-shadow: 0 1px 1px rgba(255,255,255,0.08);
+  }
+  .rack-unit::before{left:10px;} .rack-unit::after{right:10px;}
+
+  .plate{
+    display:inline-block;
+    font-size:0.68rem; letter-spacing:2.5px; color:var(--text-dim);
+    background:rgba(0,0,0,0.35);
+    border:1px solid var(--hairline);
+    padding:3px 10px; border-radius:3px; margin-bottom:16px;
+  }
+  .plate b{color:var(--amber); font-weight:600;}
+
+  /* Drop zone */
+  .dropzone{
+    border:1.5px dashed var(--hairline-lit);
+    border-radius:5px; padding:26px; text-align:center;
+    color:var(--text-dim); cursor:pointer; transition:0.15s;
+  }
+  .dropzone.drag{border-color:var(--amber); background:rgba(255,176,32,0.05); color:var(--text);}
+  .dropzone .big{font-size:0.95rem; color:var(--text); margin-bottom:4px;}
+  .filelist{margin-top:14px; display:flex; flex-direction:column; gap:6px;}
+  .fileitem{
+    display:flex; justify-content:space-between; align-items:center;
+    background:rgba(0,0,0,0.3); border:1px solid var(--hairline);
+    border-radius:4px; padding:8px 12px; font-size:0.82rem;
+  }
+  .fileitem .rm{color:var(--red); cursor:pointer; font-weight:700; padding:0 4px;}
+  .fileitem .sz{color:var(--text-faint);}
+
+  /* Mode toggle */
+  .modes{display:flex; gap:12px; margin-top:2px;}
+  .mode-btn{
+    flex:1; padding:14px; text-align:center; cursor:pointer;
+    border:1px solid var(--hairline); border-radius:5px;
+    background:rgba(0,0,0,0.25); transition:0.15s;
+  }
+  .mode-btn b{display:block; font-family:'Big Shoulders Display'; font-size:1.15rem; letter-spacing:1px; color:var(--text);}
+  .mode-btn span{font-size:0.72rem; color:var(--text-faint);}
+  .mode-btn.active{border-color:var(--amber); background:rgba(255,176,32,0.08); box-shadow:0 0 0 1px var(--amber) inset;}
+  .mode-btn.active b{color:var(--amber);}
+
+  /* Grid controls */
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:20px;}
+  .field label{
+    display:block; font-size:0.68rem; letter-spacing:1.5px; color:var(--text-dim);
+    margin-bottom:6px; text-transform:uppercase;
+  }
+  select, input[type=number], input[type=text]{
+    width:100%; background:#0f0d08; color:var(--text);
+    border:1px solid var(--hairline); border-radius:4px;
+    padding:9px 10px; font-family:'JetBrains Mono'; font-size:0.85rem;
+  }
+  select:focus, input:focus{outline:2px solid var(--amber); outline-offset:1px;}
+  .row-inline{display:flex; align-items:center; gap:10px;}
+  .switch{
+    width:42px; height:22px; border-radius:11px; background:#0f0d08; border:1px solid var(--hairline);
+    position:relative; cursor:pointer; flex-shrink:0;
+  }
+  .switch .knob{
+    position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+    background:var(--text-faint); transition:0.15s;
+  }
+  .switch.on{background:rgba(255,176,32,0.15); border-color:var(--amber);}
+  .switch.on .knob{left:22px; background:var(--amber);}
+
+  .note{font-size:0.72rem; color:var(--text-faint); margin-top:14px; line-height:1.6;}
+  .note b{color:var(--text-dim);}
+
+  /* Process button */
+  .fire-btn{
+    width:100%; padding:16px; margin-top:8px;
+    background:linear-gradient(180deg, #2a2415, #1a1710);
+    border:1px solid var(--amber-dim); border-radius:6px;
+    color:var(--amber); font-family:'Big Shoulders Display'; font-weight:700;
+    font-size:1.15rem; letter-spacing:2px; text-transform:uppercase;
+    cursor:pointer; transition:0.15s;
+  }
+  .fire-btn:hover:not(:disabled){background:linear-gradient(180deg, #332b18, #201c11); box-shadow:0 0 16px rgba(255,176,32,0.15);}
+  .fire-btn:disabled{opacity:0.5; cursor:not-allowed;}
+
+  /* VU meter (signature element) */
+  .vu-wrap{margin-top:18px;}
+  .vu-label{font-size:0.68rem; letter-spacing:1.5px; color:var(--text-dim); display:flex; justify-content:space-between; margin-bottom:6px;}
+  .vu-track{display:flex; gap:3px; height:16px;}
+  .vu-seg{flex:1; background:#221f16; border-radius:1px;}
+  .vu-seg.lit-amber{background:var(--amber); box-shadow:0 0 6px rgba(255,176,32,0.6);}
+  .vu-seg.lit-red{background:var(--red); box-shadow:0 0 6px rgba(255,77,61,0.6);}
+  .vu-seg.lit-green{background:var(--green); box-shadow:0 0 6px rgba(92,228,136,0.5);}
+
+  .status-line{margin-top:12px; font-size:0.82rem; color:var(--text-dim); min-height:1.2em;}
+
+  /* Log console */
+  .console{
+    background:#0b0a06; border:1px solid var(--hairline); border-radius:5px;
+    padding:14px 16px; height:260px; overflow-y:auto; font-size:0.78rem; line-height:1.6;
+  }
+  .console::-webkit-scrollbar{width:8px;} .console::-webkit-scrollbar-thumb{background:var(--hairline-lit); border-radius:4px;}
+  .lg-info{color:var(--text-dim);}
+  .lg-header{color:var(--amber); font-weight:600;}
+  .lg-good{color:var(--green);}
+  .lg-warning{color:#ffd27a;}
+  .lg-critical{color:var(--red);}
+  .lg-separator{color:var(--text-faint);}
+
+  .outputs{margin-top:16px; display:flex; flex-direction:column; gap:8px;}
+  .outfile{
+    display:flex; justify-content:space-between; align-items:center;
+    background:rgba(0,0,0,0.3); border:1px solid var(--hairline); border-radius:4px;
+    padding:10px 14px; font-size:0.8rem;
+  }
+  .outfile a{color:var(--amber); text-decoration:none; font-weight:600;}
+  .outfile a:hover{text-decoration:underline;}
+
+  .zip-btn{
+    margin-top:10px; padding:10px; width:100%; background:rgba(92,228,136,0.08);
+    border:1px solid var(--green); color:var(--green); border-radius:5px;
+    font-family:'JetBrains Mono'; font-weight:600; cursor:pointer; font-size:0.8rem;
+  }
+
+  .foot{text-align:center; color:var(--text-faint); font-size:0.7rem; margin-top:30px; letter-spacing:0.5px;}
+</style>
+</head>
+<body>
+<div class="rig">
+
+  <div class="masthead">
+    <h1 class="display">Audio&nbsp;Prep&nbsp;Console</h1>
+    <div class="unit-tag">SIGNAL CHAIN <b>v6-WEB</b><br>PITCH-CORRECT PLAYBACK RIG</div>
+  </div>
+
+  <!-- SOURCE -->
+  <div class="rack-unit">
+    <div class="plate">01 · <b>SOURCE</b></div>
+    <div class="dropzone" id="dropzone">
+      <div class="big">Drop audio files here, or click to browse</div>
+      <div>MP3 · WAV · OGG · FLAC · M4A</div>
+      <input type="file" id="fileInput" multiple accept="audio/*" style="display:none">
+    </div>
+    <div class="filelist" id="fileList"></div>
+  </div>
+
+  <!-- MODE -->
+  <div class="rack-unit">
+    <div class="plate">02 · <b>MODE</b></div>
+    <div class="modes">
+      <div class="mode-btn active" data-mode="song">
+        <b>Song</b><span>Single track, cleaner limiter</span>
+      </div>
+      <div class="mode-btn" data-mode="concert">
+        <b>Concert Set</b><span>Long set, gate + crowd-noise handling</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHAIN -->
+  <div class="rack-unit">
+    <div class="plate">03 · <b>CHAIN</b></div>
+    <div class="grid">
+      <div class="field">
+        <label>Output Volume</label>
+        <select id="volSel">
+          <option value="-50">−50 dB (loudest)</option>
+          <option value="-55" selected>−55 dB</option>
+          <option value="-60">−60 dB</option>
+          <option value="-70">−70 dB (quiet)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Noise Reduction</label>
+        <select id="noiseSel">
+          <option value="off">Off</option>
+          <option value="light" selected>Light</option>
+          <option value="medium">Medium</option>
+          <option value="strong">Strong</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Export Format</label>
+        <select id="fmtSel">
+          <option value="ogg_std" selected>OGG · 256k</option>
+          <option value="ogg_hq">OGG · 384k</option>
+          <option value="mp3">MP3 · V0</option>
+          <option value="wav">WAV (lossless)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>File Suffix</label>
+        <input type="text" id="suffixInp" value="_rbx">
+      </div>
+    </div>
+
+    <div class="field" style="margin-top:16px;">
+      <label>Split Into Chunks</label>
+      <div class="row-inline">
+        <div class="switch on" id="splitSwitch"><div class="knob"></div></div>
+        <span style="font-size:0.8rem; color:var(--text-dim);">On — target length per chunk (Roblox playback minutes):</span>
+        <input type="number" id="splitMin" value="6.5" step="0.1" min="0.5" style="width:80px;">
+      </div>
+    </div>
+
+    <div class="note">
+      Pitch is shifted down by <b>2.941×</b> before export, so the file on disk is shorter than what plays back.
+      In Roblox, set the <b>Sound.PlaybackSpeed</b> to <b>2.941</b> to restore the original pitch and tempo —
+      the companion player script (separate download) does this automatically.
+    </div>
+  </div>
+
+  <!-- PROCESS -->
+  <div class="rack-unit">
+    <div class="plate">04 · <b>RUN</b></div>
+    <button class="fire-btn" id="processBtn">▶ Process Files</button>
+
+    <div class="vu-wrap">
+      <div class="vu-label"><span>FILE PROGRESS</span><span id="fileProgTxt">0 / 0</span></div>
+      <div class="vu-track" id="vuFile"></div>
+    </div>
+    <div class="vu-wrap">
+      <div class="vu-label"><span>STAGE PROGRESS</span><span id="stageProgTxt">idle</span></div>
+      <div class="vu-track" id="vuStage"></div>
+    </div>
+    <div class="status-line" id="statusLine">Ready — engine not yet loaded (loads on first run).</div>
+  </div>
+
+  <!-- LOG -->
+  <div class="rack-unit">
+    <div class="plate">05 · <b>LOG</b></div>
+    <div class="console" id="consoleLog"></div>
+  </div>
+
+  <!-- OUTPUT -->
+  <div class="rack-unit">
+    <div class="plate">06 · <b>OUTPUT</b></div>
+    <div id="outputsEmpty" style="color:var(--text-faint); font-size:0.82rem;">Processed chunks will appear here.</div>
+    <div class="outputs" id="outputsList"></div>
+    <button class="zip-btn" id="zipBtn" style="display:none;">⬇ Download All As .zip</button>
+  </div>
+
+  <div class="foot">Runs entirely in your browser — files never leave your device.</div>
+</div>
+
+<script type="module">
+import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js";
+import { toBlobURL, fetchFile } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js";
+
+const PLAYBACK_SPEED = 2.941;
+let ffmpeg = null;
+let ffmpegReady = false;
+let files = [];
+let outputBlobs = []; // {name, blob}
+
+// ---------- UI wiring ----------
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileList = document.getElementById('fileList');
+let mode = 'song';
+
+document.querySelectorAll('.mode-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+  });
+});
+
+const splitSwitch = document.getElementById('splitSwitch');
+let splitOn = true;
+splitSwitch.addEventListener('click', ()=>{
+  splitOn = !splitOn;
+  splitSwitch.classList.toggle('on', splitOn);
+});
+
+dropzone.addEventListener('click', ()=> fileInput.click());
+dropzone.addEventListener('dragover', e=>{e.preventDefault(); dropzone.classList.add('drag');});
+dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e=>{
+  e.preventDefault(); dropzone.classList.remove('drag');
+  addFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e=> addFiles(e.target.files));
+
+function addFiles(list){
+  for(const f of list){
+    if(!files.find(x=>x.name===f.name && x.size===f.size)) files.push(f);
+  }
+  renderFileList();
+}
+function renderFileList(){
+  fileList.innerHTML='';
+  files.forEach((f, i)=>{
+    const div = document.createElement('div');
+    div.className='fileitem';
+    div.innerHTML = `<span>${f.name}</span><span class="sz">${(f.size/1048576).toFixed(1)} MB <span class="rm" data-i="${i}">✕</span></span>`;
+    fileList.appendChild(div);
+  });
+  fileList.querySelectorAll('.rm').forEach(el=>{
+    el.addEventListener('click', e=>{
+      e.stopPropagation();
+      files.splice(parseInt(el.dataset.i),1);
+      renderFileList();
+    });
+  });
+}
+
+// ---------- VU meter ----------
+function buildVU(el, segCount){
+  el.innerHTML='';
+  for(let i=0;i<segCount;i++){
+    const s=document.createElement('div');
+    s.className='vu-seg';
+    el.appendChild(s);
+  }
+}
+function setVU(el, ratio){
+  const segs = el.children;
+  const lit = Math.round(ratio*segs.length);
+  for(let i=0;i<segs.length;i++){
+    segs[i].className='vu-seg';
+    if(i<lit){
+      const pos = i/segs.length;
+      segs[i].className += pos>0.85? ' lit-red' : (pos>0.6? ' lit-amber' : ' lit-green');
+    }
+  }
+}
+const vuFile = document.getElementById('vuFile');
+const vuStage = document.getElementById('vuStage');
+buildVU(vuFile, 24);
+buildVU(vuStage, 24);
+
+function setStatus(msg){ document.getElementById('statusLine').textContent = msg; }
+function log(msg, cls='info'){
+  const c = document.getElementById('consoleLog');
+  const line = document.createElement('div');
+  line.className = 'lg-'+cls;
+  line.textContent = msg;
+  c.appendChild(line);
+  c.scrollTop = c.scrollHeight;
+}
+function fmtTime(s){
+  const m = Math.floor(s/60), sec = Math.floor(s%60);
+  return String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+}
+
+// ---------- ffmpeg engine ----------
+async function ensureEngine(){
+  if(ffmpegReady) return;
+  setStatus('Loading processing engine (first run only)…');
+  log('⏳  Loading ffmpeg engine…', 'header');
+  ffmpeg = new FFmpeg();
+  ffmpeg.on('log', ({message})=>{ /* raw ffmpeg stderr, kept out of UI log for noise */ window.__lastFF = (window.__lastFF||'') + message + '\n'; });
+  const coreBaseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+  const ffmpegBaseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+  await ffmpeg.load({
+    coreURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    classWorkerURL: await toBlobURL(`${ffmpegBaseURL}/worker.js`, 'text/javascript'),
+  });
+  ffmpegReady = true;
+  log('   ✓  Engine ready', 'good');
+}
+
+async function ffrun(args){
+  window.__lastFF = '';
+  await ffmpeg.exec(args);
+  return window.__lastFF;
+}
+
+function parseDuration(ffOut){
+  const m = ffOut.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);
+  if(!m) return null;
+  return (+m[1])*3600 + (+m[2])*60 + parseFloat(m[3]);
+}
+function parseSampleRate(ffOut){
+  const m = ffOut.match(/(\d+)\s*Hz/);
+  return m ? parseInt(m[1]) : 44100;
+}
+function parseVolume(ffOut){
+  const mean = ffOut.match(/mean_volume:\s*(-?[\d.]+)/);
+  const max  = ffOut.match(/max_volume:\s*(-?[\d.]+)/);
+  return { mean: mean?parseFloat(mean[1]):null, max: max?parseFloat(max[1]):null };
+}
+
+// ---------- filter chain (mirrors the desktop tool) ----------
+function buildFilterChain(mode, sr, volLinear, noiseReduction){
+  const lowRate = Math.round(sr / PLAYBACK_SPEED);
+  let filters = ['aformat=sample_fmts=fltp'];
+
+  if(mode === 'concert'){
+    filters.push('alimiter=level_in=1:level_out=1:limit=0.80:attack=0.5:release=30:level=disabled');
+    filters.push('highpass=f=40:poles=2', 'highpass=f=20:poles=1');
+    const nrMap = {off:'afftdn=nr=8:nf=-35:nt=w:om=o', light:'afftdn=nr=12:nf=-40:nt=w:om=o',
+                   medium:'afftdn=nr=25:nf=-50:nt=w:om=o', strong:'afftdn=nr=40:nf=-55:nt=w:om=o'};
+    filters.push(nrMap[noiseReduction]);
+    if(noiseReduction==='strong') filters.push('afftdn=nr=15:nf=-60:nt=w:om=o');
+    const anlm = {off:0.0003, light:0.0003, medium:0.0012, strong:0.003}[noiseReduction];
+    filters.push(`anlmdn=s=${anlm}:p=0.002:r=0.004:m=15`);
+    if(noiseReduction==='medium'||noiseReduction==='strong') filters.push('equalizer=f=10000:t=h:w=0.5:g=1.5');
+    filters.push('lowpass=f=16000:poles=2', 'lowpass=f=15000:poles=2');
+    filters.push('agate=threshold=0.00398:attack=15:release=800:ratio=6:makeup=1');
+    filters.push(`asetrate=${lowRate}`, 'aresample=44100:resampler=swr:filter_size=512:cutoff=0.93:precision=28');
+  } else {
+    filters.push('alimiter=level_in=1:level_out=1:limit=0.95:attack=1:release=50:level=disabled');
+    filters.push('highpass=f=20', 'lowpass=f=16000:poles=2', 'lowpass=f=15000:poles=2');
+    if(noiseReduction !== 'off'){
+      const nrMap = {light:'afftdn=nr=8:nf=-35:nt=w:om=o', medium:'afftdn=nr=18:nf=-45:nt=w:om=o', strong:'afftdn=nr=30:nf=-50:nt=w:om=o'};
+      filters.push(nrMap[noiseReduction]);
+      if(noiseReduction==='medium'||noiseReduction==='strong'){
+        const s2 = {medium:0.0008, strong:0.0015}[noiseReduction];
+        filters.push(`anlmdn=s=${s2}:p=0.002:r=0.004:m=15`);
+      }
+    }
+    filters.push(`asetrate=${lowRate}`, 'aresample=44100:resampler=swr:filter_size=512:cutoff=0.93:precision=28');
+    filters.push('agate=threshold=0.00316:attack=20:release=250:ratio=10:makeup=1');
+  }
+  filters.push(`volume=${volLinear.toFixed(8)}`);
+  filters.push('alimiter=level_in=1:level_out=1:limit=0.891:attack=5:release=50:level=disabled');
+  return filters.join(',');
+}
+
+function codecArgsFor(fmt){
+  if(fmt==='ogg_hq') return {ext:'ogg', args:['-codec:a','libvorbis','-b:a','384k']};
+  if(fmt==='ogg_std'||fmt==='ogg') return {ext:'ogg', args:['-codec:a','libvorbis','-b:a','256k']};
+  if(fmt==='mp3') return {ext:'mp3', args:['-codec:a','libmp3lame','-q:a','0']};
+  if(fmt==='wav') return {ext:'wav', args:['-codec:a','pcm_s16le']};
+  return {ext:'ogg', args:['-codec:a','libvorbis','-b:a','256k']};
+}
+
+// ---------- pipeline ----------
+async function processOne(file, idx, total, opts){
+  const inName = `in_${idx}${extOf(file.name)}`;
+  const tmpWav = `tmp_${idx}.wav`;
+  await ffmpeg.writeFile(inName, await fetchFile(file));
+
+  setStatus(`(${idx+1}/${total}) Probing: ${file.name}`);
+  const probeOut = await ffrun(['-i', inName]);
+  const sr = parseSampleRate(probeOut);
+
+  const volLinear = Math.pow(10, opts.volDb/20);
+  const chain = buildFilterChain(opts.mode, sr, volLinear, opts.noise);
+
+  log(`\n════════════════════════════════════════`, 'separator');
+  log(`FILE ${idx+1}/${total}: ${file.name}`, 'header');
+  log(`════════════════════════════════════════`, 'separator');
+  log('ENCODING (pitch shift + chain)…', 'header');
+  setStatus(`(${idx+1}/${total}) Encoding: ${file.name}`);
+  setVU(vuStage, 0.15);
+
+  await ffrun(['-y','-i', inName, '-af', chain, '-ar','44100','-codec:a','pcm_f32le', tmpWav]);
+  log('   ✓  Encode complete', 'good');
+  setVU(vuStage, 0.4);
+
+  // Lightweight QC: peak/mean via volumedetect
+  setStatus(`(${idx+1}/${total}) QC scan: ${file.name}`);
+  log('🔍  Quick QC — peak & mean level…', 'header');
+  const qcOut = await ffrun(['-i', tmpWav, '-af', 'volumedetect', '-f','null','-']);
+  const vol = parseVolume(qcOut);
+  if(vol.max !== null){
+    log(`   Peak: ${vol.max.toFixed(1)} dBFS`, 'info');
+    if(vol.max > -0.5) log('   ⚠  Hot — close to clipping', 'warning');
+    else log('   ✓  Healthy peak level', 'good');
+  }
+  setVU(vuStage, 0.6);
+
+  const durOut = await ffrun(['-i', tmpWav]);
+  const totalDur = parseDuration(durOut) || 0;
+  log(`   Duration on disk: ${fmtTime(totalDur)} (plays as ${fmtTime(totalDur*PLAYBACK_SPEED)} in Roblox)`, 'info');
+
+  const {ext, args: codecArgs} = codecArgsFor(opts.fmt);
+  const baseName = file.name.replace(/\.[^/.]+$/, '') + opts.suffix;
+  const outputs = [];
+
+  if(opts.split){
+    const chunkSecs = (opts.splitMin*60) / PLAYBACK_SPEED;
+    const numChunks = Math.max(1, Math.ceil(totalDur / chunkSecs));
+    log(`✂  Splitting into ${numChunks} chunk(s) of ${opts.splitMin} min (Roblox time) each…`, 'header');
+    for(let c=0;c<numChunks;c++){
+      const start = c*chunkSecs;
+      const remaining = totalDur - start;
+      const dur = Math.min(chunkSecs, remaining);
+      if(dur <= 0.05) break;
+      const outName = `${baseName}_part${c+1}.${ext}`;
+      await ffrun(['-y','-ss', start.toFixed(6), '-i', tmpWav, '-t', dur.toFixed(6), '-ar','44100', ...codecArgs, outName]);
+      const data = await ffmpeg.readFile(outName);
+      outputs.push({name: outName, blob: new Blob([data.buffer], {type:'audio/'+ext})});
+      log(`   ✓  ${outName}`, 'good');
+      setVU(vuStage, 0.6 + 0.35*((c+1)/numChunks));
+      await ffmpeg.deleteFile(outName);
+    }
+  } else {
+    const outName = `${baseName}.${ext}`;
+    await ffrun(['-y','-i', tmpWav, '-ar','44100', ...codecArgs, outName]);
+    const data = await ffmpeg.readFile(outName);
+    outputs.push({name: outName, blob: new Blob([data.buffer], {type:'audio/'+ext})});
+    log(`   ✓  ${outName}`, 'good');
+    await ffmpeg.deleteFile(outName);
+  }
+
+  await ffmpeg.deleteFile(inName);
+  await ffmpeg.deleteFile(tmpWav);
+  setVU(vuStage, 1);
+  log(`✅  ${file.name} → ${outputs.length} file(s)`, 'good');
+  return outputs;
+}
+
+function extOf(name){
+  const m = name.match(/\.[^/.]+$/);
+  return m ? m[0] : '.dat';
+}
+
+function renderOutputs(){
+  const list = document.getElementById('outputsList');
+  const empty = document.getElementById('outputsEmpty');
+  const zipBtn = document.getElementById('zipBtn');
+  list.innerHTML = '';
+  if(outputBlobs.length===0){ empty.style.display='block'; zipBtn.style.display='none'; return; }
+  empty.style.display='none';
+  zipBtn.style.display='block';
+  outputBlobs.forEach(o=>{
+    const url = URL.createObjectURL(o.blob);
+    const div = document.createElement('div');
+    div.className='outfile';
+    div.innerHTML = `<span>${o.name}</span><a href="${url}" download="${o.name}">↓ download</a>`;
+    list.appendChild(div);
+  });
+}
+
+document.getElementById('zipBtn').addEventListener('click', async ()=>{
+  const JSZip = (await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm')).default;
+  const zip = new JSZip();
+  outputBlobs.forEach(o=> zip.file(o.name, o.blob));
+  const blob = await zip.generateAsync({type:'blob'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'processed_audio.zip'; a.click();
+});
+
+document.getElementById('processBtn').addEventListener('click', async ()=>{
+  if(files.length===0){ alert('Add at least one audio file first.'); return; }
+  const btn = document.getElementById('processBtn');
+  btn.disabled = true; btn.textContent = 'Processing…';
+  outputBlobs = [];
+  document.getElementById('consoleLog').innerHTML='';
+  renderOutputs();
+
+  try{
+    await ensureEngine();
+    const opts = {
+      mode,
+      volDb: parseFloat(document.getElementById('volSel').value),
+      noise: document.getElementById('noiseSel').value,
+      fmt: document.getElementById('fmtSel').value,
+      suffix: document.getElementById('suffixInp').value,
+      split: splitOn,
+      splitMin: parseFloat(document.getElementById('splitMin').value),
+    };
+    for(let i=0;i<files.length;i++){
+      document.getElementById('fileProgTxt').textContent = `${i}/${files.length}`;
+      setVU(vuFile, i/files.length);
+      const outs = await processOne(files[i], i, files.length, opts);
+      outputBlobs.push(...outs);
+      renderOutputs();
+    }
+    document.getElementById('fileProgTxt').textContent = `${files.length}/${files.length}`;
+    setVU(vuFile, 1);
+    setStatus(`Done ✓ ${files.length} file(s) → ${outputBlobs.length} chunk(s)`);
+  }catch(err){
+    console.error(err);
+    log('❌  ERROR: ' + err.message, 'critical');
+    setStatus('Failed — see log for details.');
+  }
+  btn.disabled = false; btn.textContent = '▶ Process Files';
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "audio-prep-console",
+  "version": "1.0.0",
+  "description": "Browser-based audio prep console for Roblox — pitch shift, noise reduction, and chunked export, all client-side.",
+  "private": true,
+  "scripts": {
+    "start": "npx --yes serve -s . -l ${PORT:-3000}"
+  }
+}
