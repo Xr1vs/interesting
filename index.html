@@ -1161,142 +1161,152 @@ async function processOne(file, idx, total, opts){
   log('Reading file info…', 'header');
   const probeOut = await ffrun(['-i', inName]);
   const sr = parseSampleRate(probeOut);
-  const totalDur = parseDuration(probeOut) || 0;
-  log(`   Sample rate: ${sr}Hz — Duration: ${totalDur ? fmtTime(totalDur) : 'unknown'}`, 'info');
+  const srcDur = parseDuration(probeOut) || 0;
+  log(`   Sample rate: ${sr}Hz — Duration: ${srcDur ? fmtTime(srcDur) : 'unknown'}`, 'info');
 
   const volLinear = Math.pow(10, opts.volDb/20);
   const chain = buildFilterChain(opts.mode, sr, volLinear, opts.noise);
   const {ext, args: codecArgs} = codecArgsFor(opts.fmt);
   const baseName = file.name.replace(/\.[^/.]+$/, '') + opts.suffix;
+  const outputs = [];
+  const jobStart = performance.now();
 
-  // Internal safety segment length: the same length as the user's requested
-  // chunk size, used to bound how much audio ffmpeg holds in memory at once —
-  // this applies even when "Split Into Chunks" is off, which is what used to
-  // let a multi-hour concert set get pushed through one giant filter pass and
-  // either take forever or run the browser out of memory partway through.
-  const segSecs = (opts.splitMin*60) / PLAYBACK_SPEED;
-  const emitSeparateFiles = opts.split;
-  // Short files (typical single songs) are fine processed as one whole-file
-  // pass — no need to chunk-then-stitch. Only force internal chunking when
-  // split output is off AND the file is long enough that one giant filter
-  // pass could be slow or memory-heavy (this is what used to make long
-  // concert sets crash or hang when "Split Into Chunks" was turned off).
-  const SAFE_WHOLE_FILE_SECS = 20 * 60;
-  const needsInternalChunking = emitSeparateFiles || !totalDur || totalDur > SAFE_WHOLE_FILE_SECS;
-  const numSegs = needsInternalChunking && totalDur ? Math.max(1, Math.ceil(totalDur / segSecs)) : 1;
+  // ---- Pass 1: encode the *whole* file (pitch shift + denoise chain) ----
+  // This must run over the full, continuous source audio in one logical pass
+  // so the noise-reduction filters (afftdn/anlmdn) get full context to learn
+  // the noise floor — cutting the source into short pieces *before* this
+  // filter chain runs is what caused both the wrong-split-points bug and the
+  // background static: each short piece re-started denoising from scratch,
+  // and the piece boundaries were being computed in the wrong time domain
+  // (post-pitch-shift units applied to pre-pitch-shift source seeks).
+  //
+  // For very long sets we still can't safely hold the entire thing in memory
+  // as one ffmpeg invocation, so long source audio gets cut into large (~20
+  // real-world minute) *source-time* safety segments — encoded independently,
+  // then stream-copy concatenated back into one continuous encoded file
+  // before any Roblox-facing splitting happens. 20 minutes is comfortably
+  // long enough for afftdn's adaptive noise floor to converge, so the only
+  // cost is a barely-audible re-convergence blip once every ~20 minutes on
+  // extremely long sets, instead of every few minutes.
+  const SAFETY_SEGMENT_SRC_SECS = 20 * 60;
+  const needsSafetySegments = srcDur > SAFETY_SEGMENT_SRC_SECS * 1.15; // small buffer so a 21-min file isn't split for nothing
+  const numSafetySegs = needsSafetySegments ? Math.ceil(srcDur / SAFETY_SEGMENT_SRC_SECS) : 1;
 
-  if(numSegs > 1){
-    log(`Processing in ${numSegs} bounded segment(s) of ~${opts.splitMin} min (Roblox time) each ` +
-      `— this keeps memory use flat regardless of how long the source file is, and lets you see ` +
-      `progress per segment below instead of one long silent run.`, 'header');
-    if(!emitSeparateFiles) log('   ("Split Into Chunks" is off, so these will be stitched back into one file at the end.)', 'info');
+  if(numSafetySegs > 1){
+    log(`Encoding in ${numSafetySegs} internal piece(s) of ~20 real-world minutes each (source-time, ` +
+      `unrelated to your Roblox chunk-length setting) — keeps memory flat on long sets, then these are ` +
+      `stitched back into one continuous file before any Roblox splitting happens.`, 'header');
+  } else {
+    log('Encoding (pitch shift + noise reduction chain)…', 'header');
   }
 
-  const outputs = [];
-  const partNames = [];
-  const failedSegs = [];
-  const jobStart = performance.now();
-  // When we're not internally chunking, the single "segment" must cover the
-  // entire file, not just one chunkSecs-length slice of it.
-  const unitSecs = needsInternalChunking ? segSecs : (totalDur || segSecs);
-
-  for(let c=0; c<numSegs; c++){
-    const start = c*unitSecs;
-    const dur = totalDur ? Math.min(unitSecs, totalDur - start) : undefined;
-    if(totalDur && dur <= 0.05) break;
-
-    const partName = `${baseName}_seg${c+1}.${ext}`;
-    const label = numSegs > 1
-      ? `(${idx+1}/${total}) ${file.name} — segment ${c+1}/${numSegs}`
+  const encodedParts = [];
+  const failedSafetySegs = [];
+  for(let c = 0; c < numSafetySegs; c++){
+    const start = c * SAFETY_SEGMENT_SRC_SECS;
+    const dur = srcDur ? Math.min(SAFETY_SEGMENT_SRC_SECS, srcDur - start) : undefined;
+    if(srcDur && dur <= 0.05) break;
+    const partName = `${baseName}_enc${c+1}.${ext}`;
+    const label = numSafetySegs > 1
+      ? `(${idx+1}/${total}) ${file.name} — encoding piece ${c+1}/${numSafetySegs}`
       : `(${idx+1}/${total}) ${file.name}`;
     setStatus(label);
-    if(numSegs > 1) log(`\n-- Segment ${c+1}/${numSegs} (source ${fmtTime(start)}${dur?` → ${fmtTime(start+dur)}`:''}) --`, 'header');
-    else log('Encoding (pitch shift + chain)…', 'header');
+    if(numSafetySegs > 1) log(`\n-- Encoding piece ${c+1}/${numSafetySegs} (source ${fmtTime(start)}${dur?` → ${fmtTime(start+dur)}`:''}) --`, 'header');
 
     try{
       const segArgs = ['-y'];
-      if(totalDur) segArgs.push('-ss', start.toFixed(6));
+      if(numSafetySegs > 1) segArgs.push('-ss', start.toFixed(6));
       segArgs.push('-i', inName);
-      if(totalDur && dur !== undefined) segArgs.push('-t', dur.toFixed(6));
-      segArgs.push('-af', chain, '-ar','44100', ...codecArgs, partName);
+      if(numSafetySegs > 1 && dur !== undefined) segArgs.push('-t', dur.toFixed(6));
+      segArgs.push('-af', chain, '-ar', '44100', ...codecArgs, partName);
 
-      setLiveProgress(dur || totalDur, label);
+      setLiveProgress(dur || srcDur, label);
       const segStartT = performance.now();
       await ffrun(segArgs);
       clearLiveProgress();
-      const tookSecs = (performance.now()-segStartT)/1000;
-      setBar('stageBar', 1);
-      log(`   Encoded in ${tookSecs.toFixed(1)}s`, 'good');
+      setBar('stageBar', (c+1)/numSafetySegs);
+      log(`   Piece ${c+1}/${numSafetySegs} encoded in ${((performance.now()-segStartT)/1000).toFixed(1)}s`, 'good');
+      encodedParts.push(partName);
 
-      // Cheap QC on this segment only — full-file volumedetect on a 3hr set
-      // was itself part of what made long concert sets slow.
-      const qcOut = await ffrun(['-i', partName, '-af', 'volumedetect', '-f','null','-']);
-      const vol = parseVolume(qcOut);
-      if(vol.max !== null && vol.max > -0.5) log(`   Peak ${vol.max.toFixed(1)} dBFS — hot, close to clipping`, 'warning');
-
-      if(emitSeparateFiles){
-        const outName = `${baseName}_part${c+1}.${ext}`;
-        if(outName !== partName){ await ffmpeg.rename(partName, outName); }
-        const data = await ffmpeg.readFile(outName);
-        outputs.push({name: outName, blob: new Blob([data.buffer], {type:'audio/'+ext})});
-        log(`   ${outName} ✓`, 'good');
-        if(opts.autoUpload) queueAutoUpload(outputs[outputs.length-1]);
-        await ffmpeg.deleteFile(outName);
-      } else {
-        partNames.push(partName);
-      }
-
-      if(numSegs > 1){
+      if(numSafetySegs > 1){
         const elapsed = (performance.now()-jobStart)/1000;
         const perSeg = elapsed/(c+1);
-        const etaSecs = perSeg*(numSegs-(c+1));
-        log(`   ${c+1}/${numSegs} segments done — est. ${fmtTime(Math.max(0,etaSecs))} remaining`, 'info');
+        const etaSecs = perSeg*(numSafetySegs-(c+1));
+        log(`   ${c+1}/${numSafetySegs} piece(s) done — est. ${fmtTime(Math.max(0,etaSecs))} remaining`, 'info');
       }
     }catch(err){
       clearLiveProgress();
-      log(`   Segment ${c+1}/${numSegs} failed: ${err.message} — skipping this segment and continuing.`, 'critical');
-      failedSegs.push(c+1);
+      log(`   Piece ${c+1}/${numSafetySegs} failed: ${err.message} — skipping and continuing.`, 'critical');
+      failedSafetySegs.push(c+1);
       await ffmpeg.deleteFile(partName).catch(()=>{});
     }
-    setBar('fileBar', (idx + (c+1)/numSegs) / total);
   }
 
-  // If the user wants one merged file back (split off) and we actually
-  // processed in more than one internal piece, stitch them together now.
-  if(!emitSeparateFiles){
-    const outName = `${baseName}.${ext}`;
-    if(partNames.length === 0){
-      log(`   Nothing to write for ${file.name} — every segment failed.`, 'critical');
-    } else if(partNames.length === 1){
-      await ffmpeg.rename(partNames[0], outName);
+  if(encodedParts.length === 0){
+    log(`   Nothing encoded for ${file.name} — every piece failed.`, 'critical');
+    await ffmpeg.deleteFile(inName).catch(()=>{});
+    return outputs;
+  }
+
+  const fullEncodedName = `${baseName}_full.${ext}`;
+  if(encodedParts.length === 1){
+    await ffmpeg.rename(encodedParts[0], fullEncodedName);
+  } else {
+    log(`Stitching ${encodedParts.length} encoded piece(s) into one continuous file…`, 'header');
+    await concatParts(encodedParts, fullEncodedName);
+    for(const p of encodedParts) await ffmpeg.deleteFile(p).catch(()=>{});
+  }
+  await ffmpeg.deleteFile(inName).catch(()=>{});
+
+  const fullDurOut = await ffrun(['-i', fullEncodedName]);
+  const fullDur = parseDuration(fullDurOut) || 0;
+  log(`   Duration on disk: ${fmtTime(fullDur)} (plays as ${fmtTime(fullDur*PLAYBACK_SPEED)} in Roblox)`, 'info');
+
+  const qcOut = await ffrun(['-i', fullEncodedName, '-af', 'volumedetect', '-f','null','-']);
+  const vol = parseVolume(qcOut);
+  if(vol.max !== null){
+    log(`   Peak: ${vol.max.toFixed(1)} dBFS`, 'info');
+    log(vol.max > -0.5 ? '   Hot — close to clipping' : '   Healthy peak level', vol.max > -0.5 ? 'warning' : 'good');
+  }
+
+  // ---- Pass 2: Roblox-facing split, done on the *encoded* file, in its own
+  // (post-pitch-shift) time domain — this is the correct domain for chunkSecs
+  // math, and is a fast stream-copy (no re-encode, no further quality loss).
+  if(opts.split){
+    const chunkSecs = (opts.splitMin*60) / PLAYBACK_SPEED;
+    const numChunks = Math.max(1, Math.ceil(fullDur / chunkSecs));
+    log(`Splitting into ${numChunks} chunk(s) of ${opts.splitMin} min (Roblox time) each…`, 'header');
+    for(let c=0;c<numChunks;c++){
+      const start = c*chunkSecs;
+      const dur = Math.min(chunkSecs, fullDur - start);
+      if(dur <= 0.05) break;
+      const outName = `${baseName}_part${c+1}.${ext}`;
+      await ffrun(['-y','-ss', start.toFixed(6), '-i', fullEncodedName, '-t', dur.toFixed(6), '-c', 'copy', outName]);
       const data = await ffmpeg.readFile(outName);
       outputs.push({name: outName, blob: new Blob([data.buffer], {type:'audio/'+ext})});
-      log(`   ${outName} ✓`, 'good');
+      log(`   ${outName} ✓ (${fmtTime(dur)} on disk → ${fmtTime(dur*PLAYBACK_SPEED)} in Roblox)`, 'good');
       if(opts.autoUpload) queueAutoUpload(outputs[outputs.length-1]);
-      await ffmpeg.deleteFile(outName);
-    } else {
-      log(`Stitching ${partNames.length} processed segment(s) back into one file…`, 'header');
-      try{
-        await concatParts(partNames, outName);
-        const data = await ffmpeg.readFile(outName);
-        outputs.push({name: outName, blob: new Blob([data.buffer], {type:'audio/'+ext})});
-        log(`   ${outName} ✓ (${failedSegs.length ? `missing segment(s) ${failedSegs.join(', ')} — ` : ''}stitched from ${partNames.length} part(s))`, 'good');
-        if(opts.autoUpload) queueAutoUpload(outputs[outputs.length-1]);
-        await ffmpeg.deleteFile(outName);
-      }catch(err){
-        log(`   Couldn't stitch segments into one file (${err.message}). Turning on "Split Into Chunks" avoids this merge step entirely and is recommended for long sets.`, 'critical');
-      } finally {
-        for(const p of partNames) await ffmpeg.deleteFile(p).catch(()=>{});
-      }
+      await ffmpeg.deleteFile(outName).catch(()=>{});
     }
+    await ffmpeg.deleteFile(fullEncodedName).catch(()=>{});
+  } else {
+    const outName = `${baseName}.${ext}`;
+    await ffmpeg.rename(fullEncodedName, outName);
+    const data = await ffmpeg.readFile(outName);
+    outputs.push({name: outName, blob: new Blob([data.buffer], {type:'audio/'+ext})});
+    log(`   ${outName} ✓`, 'good');
+    if(opts.autoUpload) queueAutoUpload(outputs[outputs.length-1]);
+    await ffmpeg.deleteFile(outName).catch(()=>{});
   }
 
-  await ffmpeg.deleteFile(inName).catch(()=>{});
+  setBar('fileBar', (idx+1)/total);
   const totalTook = (performance.now()-jobStart)/1000;
   log(`${file.name} -> ${outputs.length} file(s) in ${totalTook.toFixed(1)}s` +
-    (failedSegs.length ? ` (${failedSegs.length} segment(s) failed — see above)` : ''), failedSegs.length ? 'warning' : 'good');
+    (failedSafetySegs.length ? ` (${failedSafetySegs.length} internal piece(s) failed — see above)` : ''),
+    failedSafetySegs.length ? 'warning' : 'good');
   return outputs;
 }
+
 
 function uploadStateLabel(o){
   if(o.assetId) return 'uploaded ✓';
