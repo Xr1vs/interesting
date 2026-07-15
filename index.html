@@ -1,0 +1,2306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Audio Prep Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0a0a; --surface:#131313; --surface-2:#1c1c1c; --border:#2a2a2a;
+    --text:#f2f2f2; --text-dim:#8f8f8f; --text-faint:#5a5a5a;
+    --fg:#ffffff; --fg-inverse:#000000;
+    --accent:var(--fg); --accent-fg:var(--fg-inverse);
+    --good:#8f8f8f; --danger:#e5e5e5;
+    --radius:14px;
+  }
+  html[data-theme="light"]{
+    --bg:#fafafa; --surface:#ffffff; --surface-2:#f1f1f1; --border:#e2e2e2;
+    --text:#111111; --text-dim:#6b6b6b; --text-faint:#a3a3a3;
+    --fg:#000000; --fg-inverse:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  #bgLayer{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-size:cover; background-position:center; background-repeat:no-repeat;
+    opacity:0; transition:opacity 0.3s ease;
+  }
+  #bgDim{ position:fixed; inset:0; z-index:0; pointer-events:none; background:var(--bg); opacity:0; transition:opacity 0.3s ease; }
+  body{
+    margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+    font-family:'Manrope', sans-serif; transition:background 0.25s ease, color 0.25s ease;
+  }
+  .mono{font-family:'JetBrains Mono', monospace;}
+
+  /* ---------- Lock screen ---------- */
+  #lock, #rbxGate{
+    position:fixed; inset:0; background:var(--bg); z-index:100;
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity 0.4s ease, visibility 0.4s ease;
+  }
+  #lock.hidden{opacity:0; visibility:hidden; pointer-events:none;}
+  #rbxGate.hidden-view{display:none;}
+  .lock-card{
+    width:320px; text-align:center;
+    animation:rise 0.5s ease;
+  }
+  @keyframes rise{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);}}
+  .lock-mark{
+    width:44px; height:44px; border-radius:50%; margin:0 auto 22px;
+    border:1.5px solid var(--text); display:flex; align-items:center; justify-content:center;
+    font-size:1.1rem;
+  }
+  .lock-card h2{font-weight:700; font-size:1.15rem; margin:0 0 6px;}
+  .lock-card p{color:var(--text-dim); font-size:0.85rem; margin:0 0 22px;}
+  #lockInput{
+    width:100%; background:var(--surface); border:1px solid var(--border); color:var(--text);
+    border-radius:10px; padding:13px 14px; font-size:0.95rem; text-align:center;
+    letter-spacing:2px; transition:border-color 0.2s;
+  }
+  #lockInput:focus{outline:none; border-color:var(--text);}
+  #lockBtn{
+    width:100%; margin-top:12px; padding:13px; border:none; border-radius:10px;
+    background:var(--fg); color:var(--fg-inverse); font-weight:700; font-size:0.9rem;
+    cursor:pointer; transition:opacity 0.2s;
+  }
+  #lockBtn:hover{opacity:0.85;}
+  #lockErr{color:var(--danger); font-size:0.78rem; margin-top:10px; min-height:1em;}
+  #rbxGateConnectBtn, #rbxGateSkipBtn{
+    width:100%; margin-top:12px; padding:13px; border:none; border-radius:10px;
+    background:var(--fg); color:var(--fg-inverse); font-weight:700; font-size:0.9rem;
+    cursor:pointer; transition:opacity 0.2s;
+  }
+  #rbxGateConnectBtn:hover, #rbxGateSkipBtn:hover{opacity:0.85;}
+
+  /* ---------- App shell ---------- */
+  #app{max-width:1100px; margin:0 auto; padding:36px 20px 90px; opacity:0; transition:opacity 0.4s ease; position:relative; z-index:1;}
+  #app.shown{opacity:1;}
+
+  .topbar{display:flex; align-items:center; justify-content:space-between; margin-bottom:30px;}
+  .brand{display:flex; align-items:center; gap:10px;}
+  .brand-dot{width:9px; height:9px; border-radius:50%; background:var(--accent);}
+  .brand h1{font-size:1.15rem; font-weight:800; margin:0; letter-spacing:-0.2px;}
+
+  .tabs{display:flex; gap:4px; background:var(--surface); border:1px solid var(--border); border-radius:11px; padding:4px;}
+  .tab{
+    padding:8px 16px; border-radius:8px; font-size:0.82rem; font-weight:600; color:var(--text-dim);
+    cursor:pointer; transition:all 0.2s;
+  }
+  .tab.active{background:var(--accent); color:var(--accent-fg);}
+
+  .panel{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:22px 24px; margin-bottom:16px;
+    transition:border-color 0.2s;
+  }
+  .panel h3{font-size:0.72rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); margin:0 0 16px;}
+
+  /* dropzone */
+  .dropzone{
+    border:1.5px dashed var(--border); border-radius:12px; padding:30px; text-align:center;
+    cursor:pointer; transition:0.2s;
+  }
+  .dropzone.drag{border-color:var(--text); background:var(--surface-2);}
+  .dropzone .big{font-weight:600; margin-bottom:4px;}
+  .dropzone .sub{color:var(--text-faint); font-size:0.8rem;}
+  .filelist{margin-top:14px; display:flex; flex-direction:column; gap:6px;}
+  .fileitem{
+    display:flex; justify-content:space-between; align-items:center;
+    background:var(--surface-2); border-radius:9px; padding:9px 13px; font-size:0.82rem;
+  }
+  .fileitem .rm{color:var(--text-dim); cursor:pointer; font-weight:700; padding:0 4px;}
+  .fileitem .rm:hover{color:var(--text);}
+
+  /* mode */
+  .modes{display:flex; gap:10px;}
+  .mode-btn{
+    flex:1; padding:14px; text-align:center; cursor:pointer; border-radius:11px;
+    border:1px solid var(--border); background:var(--surface-2); transition:0.2s;
+  }
+  .mode-btn b{display:block; font-size:0.95rem;}
+  .mode-btn span{font-size:0.72rem; color:var(--text-faint);}
+  .mode-btn.active{border-color:var(--text); background:var(--accent); }
+  .mode-btn.active b, .mode-btn.active span{color:var(--accent-fg);}
+
+  /* fields */
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px;}
+  .field label{display:block; font-size:0.68rem; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--text-faint); margin-bottom:6px;}
+  select, input[type=number], input[type=text], input[type=password]{
+    width:100%; background:var(--surface-2); color:var(--text); border:1px solid var(--border);
+    border-radius:9px; padding:10px 11px; font-family:'Manrope'; font-size:0.85rem; transition:border-color 0.2s;
+  }
+  select:focus, input:focus{outline:none; border-color:var(--text);}
+  .row-inline{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .switch{
+    width:40px; height:22px; border-radius:11px; background:var(--surface-2); border:1px solid var(--border);
+    position:relative; cursor:pointer; flex-shrink:0; transition:0.2s;
+  }
+  .switch .knob{position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:var(--text-faint); transition:0.2s;}
+  .switch.on{background:var(--accent);}
+  .switch.on .knob{left:20px; background:var(--accent-fg);}
+  .note{font-size:0.76rem; color:var(--text-faint); margin-top:14px; line-height:1.6;}
+  .note b{color:var(--text-dim);}
+
+  /* process */
+  .fire-btn{
+    width:100%; padding:15px; border:none; border-radius:11px; background:var(--accent); color:var(--accent-fg);
+    font-weight:700; font-size:0.95rem; cursor:pointer; transition:opacity 0.2s;
+  }
+  .fire-btn:hover:not(:disabled){opacity:0.85;}
+  .fire-btn:disabled{opacity:0.35; cursor:not-allowed;}
+
+  .bar-wrap{margin-top:16px;}
+  .bar-label{display:flex; justify-content:space-between; font-size:0.72rem; color:var(--text-dim); margin-bottom:6px;}
+  .bar-track{height:6px; border-radius:3px; background:var(--surface-2); overflow:hidden;}
+  .bar-fill{height:100%; width:0%; background:var(--accent); border-radius:3px; transition:width 0.25s ease;}
+  .status-line{margin-top:12px; font-size:0.82rem; color:var(--text-dim); min-height:1.2em;}
+
+  .console{
+    background:var(--surface-2); border-radius:11px; padding:14px 16px; height:220px;
+    overflow-y:auto; font-size:0.76rem; line-height:1.6;
+  }
+  .console::-webkit-scrollbar{width:6px;} .console::-webkit-scrollbar-thumb{background:var(--border); border-radius:3px;}
+  .lg-info{color:var(--text-dim);} .lg-header{color:var(--text); font-weight:600;}
+  .lg-good{color:var(--text);} .lg-warning{color:var(--text-dim);}
+  .lg-critical{color:var(--text); font-weight:700;} .lg-separator{color:var(--text-faint);}
+
+  .outputs{margin-top:14px; display:flex; flex-direction:column; gap:8px;}
+  .outfile{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    background:var(--surface-2); border-radius:9px; padding:10px 14px; font-size:0.8rem; flex-wrap:wrap;
+  }
+  .outfile .name{flex:1; min-width:120px;}
+  .outfile .assetid{color:var(--text-dim); font-size:0.74rem;}
+  .btn-sm{
+    background:transparent; border:1px solid var(--border); color:var(--text); border-radius:7px;
+    padding:6px 10px; font-size:0.74rem; font-weight:600; cursor:pointer; transition:0.2s;
+  }
+  .btn-sm:hover{border-color:var(--text);}
+  .btn-sm:disabled{opacity:0.4; cursor:not-allowed;}
+  .zip-btn{
+    margin-top:10px; padding:11px; width:100%; background:transparent; border:1px solid var(--border);
+    color:var(--text); border-radius:9px; font-weight:600; cursor:pointer; font-size:0.82rem; transition:0.2s;
+  }
+  .zip-btn:hover{border-color:var(--text);}
+
+  /* settings */
+  .theme-row{display:flex; gap:10px;}
+  .theme-opt{
+    flex:1; padding:14px; border-radius:11px; border:1px solid var(--border); cursor:pointer; text-align:center;
+    font-size:0.82rem; font-weight:600; transition:0.2s;
+  }
+  .theme-opt.active{border-color:var(--text); background:var(--surface-2);}
+
+  /* accent theme picker */
+  .accent-grid{display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-top:2px;}
+  .accent-swatch{
+    aspect-ratio:1; border-radius:12px; border:2px solid var(--border); cursor:pointer;
+    position:relative; overflow:hidden; transition:0.15s; background:var(--surface-2);
+  }
+  .accent-swatch:hover{border-color:var(--text-dim);}
+  .accent-swatch.active{border-color:var(--text); box-shadow:0 0 0 2px var(--bg), 0 0 0 3px var(--text);}
+  .accent-swatch .sw-name{
+    position:absolute; left:6px; right:6px; bottom:5px; font-size:0.58rem; font-weight:800;
+    letter-spacing:0.2px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.7); text-transform:uppercase;
+  }
+  .accent-swatch.mono .sw-name{color:var(--text); text-shadow:none;}
+  .accent-swatch.custom-swatch .sw-name{color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.7);}
+
+  .custom-gradient-box{
+    margin-top:16px; padding:14px; border-radius:11px; border:1px solid var(--border); background:var(--surface-2);
+  }
+  .custom-gradient-preview{
+    height:44px; border-radius:9px; margin-bottom:14px; border:1px solid var(--border); transition:background 0.1s;
+  }
+  .custom-gradient-row{display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+  .cg-field{display:flex; flex-direction:column; gap:6px;}
+  .cg-field label{font-size:0.66rem; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:var(--text-faint);}
+  .cg-swatches{display:flex; align-items:center; gap:8px;}
+  input[type="color"]{
+    width:38px; height:38px; padding:0; border:1px solid var(--border); border-radius:9px;
+    background:none; cursor:pointer;
+  }
+  input[type="color"]::-webkit-color-swatch-wrapper{padding:2px;}
+  input[type="color"]::-webkit-color-swatch{border:none; border-radius:6px;}
+  .cg-angle-field{flex:1; min-width:140px;}
+  input[type="range"]{width:100%; accent-color:var(--text);}
+  .cg-apply-btn{
+    padding:9px 16px; border-radius:9px; border:1px solid var(--border); background:var(--surface);
+    color:var(--text); font-weight:700; font-size:0.78rem; cursor:pointer; transition:0.2s; white-space:nowrap;
+  }
+  .cg-apply-btn:hover{border-color:var(--text);}
+  .settings-note{font-size:0.76rem; color:var(--text-faint); margin-top:10px; line-height:1.6;}
+
+  .foot{text-align:center; color:var(--text-faint); font-size:0.72rem; margin-top:24px;}
+  .hidden-view{display:none;}
+
+  /* credit tag */
+  #madeBy{
+    position:fixed; left:14px; bottom:12px; z-index:60;
+    font-size:0.7rem; color:var(--text-faint); font-family:'JetBrains Mono', monospace;
+    letter-spacing:0.3px; user-select:none; pointer-events:none;
+  }
+
+  /* help / tutorial trigger */
+  .help-btn{
+    width:30px; height:30px; border-radius:9px; border:1px solid var(--border); background:var(--surface);
+    color:var(--text-dim); font-weight:700; font-size:0.85rem; cursor:pointer; display:flex; align-items:center;
+    justify-content:center; margin-left:8px; transition:0.2s; flex-shrink:0;
+  }
+  .help-btn:hover{border-color:var(--text); color:var(--text);}
+
+  /* top-right Roblox account widget */
+  .rbx-account{position:relative; margin-left:8px; flex-shrink:0;}
+  .rbx-account-chip{
+    display:flex; align-items:center; gap:8px; padding:5px 12px 5px 5px; border-radius:999px;
+    border:1px solid var(--border); background:var(--surface); cursor:pointer; transition:0.2s;
+  }
+  .rbx-account-chip:hover{border-color:var(--text);}
+  .rbx-avatar{width:26px; height:26px; border-radius:50%; object-fit:cover; background:var(--surface-2); flex-shrink:0;}
+  .rbx-username{font-size:0.8rem; font-weight:700; color:var(--text); max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .rbx-menu{
+    position:absolute; top:calc(100% + 8px); right:0; background:var(--surface); border:1px solid var(--border);
+    border-radius:11px; padding:6px; min-width:150px; box-shadow:0 12px 32px rgba(0,0,0,0.35); display:none; z-index:50;
+  }
+  .rbx-menu.open{display:block;}
+  .rbx-menu button{
+    width:100%; text-align:left; padding:8px 10px; border-radius:8px; border:none; background:none;
+    color:var(--text-dim); font-size:0.8rem; font-weight:600; cursor:pointer;
+  }
+  .rbx-menu button:hover{background:var(--surface-2); color:var(--text);}
+
+  /* per-row upload status */
+  .upload-status{font-size:0.7rem; color:var(--text-faint); min-width:64px;}
+  .upload-status.uploading{color:var(--text-dim);}
+  .upload-status.failed{color:var(--danger);}
+  .upload-status.done{color:var(--text);}
+
+  /* ---------- Tutorial overlay ---------- */
+  #tutorialBackdrop{
+    position:fixed; inset:0; z-index:200; display:none;
+  }
+  #tutorialBackdrop.active{display:block;}
+  #tutorialSpotlight{
+    position:absolute; border-radius:12px;
+    box-shadow:0 0 0 9999px rgba(0,0,0,0.72);
+    transition:top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
+    pointer-events:none; border:2px solid rgba(255,255,255,0.85);
+  }
+  html[data-theme="light"] #tutorialSpotlight{box-shadow:0 0 0 9999px rgba(20,20,20,0.55); border-color:rgba(0,0,0,0.75);}
+  #tutorialCard{
+    position:absolute; width:270px; background:var(--surface); border:1px solid var(--border);
+    border-radius:13px; padding:16px 18px; box-shadow:0 12px 32px rgba(0,0,0,0.45);
+    transition:top 0.25s ease, left 0.25s ease;
+    z-index:202;
+  }
+  #tutorialCard .tstep{font-size:0.68rem; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--text-faint); margin-bottom:6px;}
+  #tutorialCard h4{margin:0 0 6px; font-size:0.95rem; font-weight:800;}
+  #tutorialCard p{margin:0 0 14px; font-size:0.8rem; line-height:1.55; color:var(--text-dim);}
+  #tutorialCard .trow{display:flex; align-items:center; justify-content:space-between; gap:8px;}
+  #tutorialCard .tbtn{
+    border:none; border-radius:8px; padding:8px 14px; font-size:0.78rem; font-weight:700; cursor:pointer;
+    background:var(--fg); color:var(--fg-inverse); transition:opacity 0.2s;
+  }
+  #tutorialCard .tbtn:hover{opacity:0.85;}
+  #tutorialCard .tbtn.ghost{background:transparent; color:var(--text-dim); border:1px solid var(--border);}
+  #tutorialCard .tskip{background:none; border:none; color:var(--text-faint); font-size:0.72rem; cursor:pointer; text-decoration:underline; padding:0;}
+  #tutorialArrow{
+    position:absolute; width:16px; height:16px; background:var(--surface); border:1px solid var(--border);
+    transform:rotate(45deg); z-index:201;
+  }
+</style>
+</head>
+<body>
+
+<div id="bgLayer"></div>
+<div id="bgDim"></div>
+
+<div id="lock">
+  <div class="lock-card">
+    <div class="lock-mark">🔒</div>
+    <h2>Audio Prep Console</h2>
+    <p>Enter password to continue</p>
+    <input type="password" id="lockInput" placeholder="••••••••" autocomplete="off">
+    <button id="lockBtn">Unlock</button>
+    <div id="lockErr"></div>
+  </div>
+</div>
+
+<div id="rbxGate" class="hidden-view">
+  <div class="lock-card">
+    <div class="lock-mark">🎮</div>
+    <h2>Connect with Roblox</h2>
+    <p>Sign in with Roblox so uploads, asset permissions, and show builds happen as you — no API key to paste.</p>
+    <button id="rbxGateConnectBtn">Connect with Roblox</button>
+    <div id="rbxGateNote" style="margin-top:14px; font-size:0.78rem; color:var(--text-faint);"></div>
+    <button id="rbxGateSkipBtn" style="margin-top:10px; background:transparent; border:1px solid var(--border); color:var(--text-dim);">Skip for now</button>
+  </div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <div class="brand"><div class="brand-dot"></div><h1>Audio Prep Console</h1></div>
+    <div style="display:flex; align-items:center;">
+      <div class="tabs">
+        <div class="tab active" data-view="process">Process</div>
+        <div class="tab" data-view="assets">Asset Settings</div>
+        <div class="tab" data-view="history">History</div>
+        <div class="tab" data-view="settings">Settings</div>
+      </div>
+      <button class="help-btn" id="tutorialReplayBtn" title="Show the tutorial again">?</button>
+      <div class="rbx-account" id="rbxAccountWidget">
+        <div class="rbx-account-chip" id="rbxAccountChip" style="display:none;">
+          <img class="rbx-avatar" id="rbxAvatarImg" src="" alt="">
+          <span class="rbx-username" id="rbxUsernameLabel">—</span>
+          <div class="rbx-menu" id="rbxMenu">
+            <button id="rbxMenuDisconnect">Disconnect</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PROCESS VIEW ============ -->
+  <div id="view-process">
+
+    <div class="panel">
+      <h3>Source</h3>
+      <div class="dropzone" id="dropzone">
+        <div class="big">Drop audio files here, or click to browse</div>
+        <div class="sub">MP3 · WAV · OGG · FLAC · M4A</div>
+        <input type="file" id="fileInput" multiple accept="audio/*" style="display:none">
+      </div>
+      <div class="filelist" id="fileList"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Mode</h3>
+      <div class="modes">
+        <div class="mode-btn active" data-mode="song"><b>Song</b><span>Single track</span></div>
+        <div class="mode-btn" data-mode="concert"><b>Concert Set</b><span>Long set, gate + crowd handling</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Chain</h3>
+      <div class="grid">
+        <div class="field"><label>Output Volume</label>
+          <select id="volSel">
+            <option value="-50">−50 dB (loudest)</option>
+            <option value="-55" selected>−55 dB</option>
+            <option value="-60">−60 dB</option>
+            <option value="-70">−70 dB (quiet)</option>
+          </select>
+        </div>
+        <div class="field"><label>Noise / Static Removal</label>
+          <div class="settings-note" style="margin-top:8px;">Always on at max strength — there's no dial anymore, every file gets the heaviest denoise chain automatically.</div>
+        </div>
+        <div class="field"><label>Export Format</label>
+          <select id="fmtSel">
+            <option value="ogg_std" selected>OGG · 256k</option>
+            <option value="ogg_hq">OGG · 384k</option>
+            <option value="mp3">MP3 · V0</option>
+            <option value="wav">WAV (lossless)</option>
+          </select>
+        </div>
+        <div class="field"><label>File Suffix</label>
+          <input type="text" id="suffixInp" value="_rbx">
+        </div>
+      </div>
+      <div class="field" style="margin-top:16px;">
+        <label>Split Into Chunks</label>
+        <div class="row-inline">
+          <div class="switch on" id="splitSwitch"><div class="knob"></div></div>
+          <span style="font-size:0.8rem; color:var(--text-dim);">Target length per chunk (Roblox minutes):</span>
+          <input type="number" id="splitMin" value="6.5" step="0.1" min="0.5" style="width:80px;">
+        </div>
+        <div class="settings-note" id="chunkSizeNote" style="margin-top:8px;"></div>
+      </div>
+      <div class="note">Pitch is shifted down <b>2.941×</b> on export. Set <b>Sound.PlaybackSpeed</b> to <b>2.941</b> in Roblox to restore it — the companion player script does this automatically.</div>
+    </div>
+
+    <div class="panel">
+      <h3>Run</h3>
+      <div class="row-inline" style="margin-bottom:14px;">
+        <div class="switch" id="autoUploadSwitch"><div class="knob"></div></div>
+        <span style="font-size:0.8rem; color:var(--text-dim);">Auto-upload each chunk to Roblox as soon as it's processed (connect your Roblox account in Settings first, or use a deployment with a shared server key)</span>
+      </div>
+      <button class="fire-btn" id="processBtn">Process Files</button>
+      <div class="bar-wrap"><div class="bar-label"><span>Engine</span><span id="engineTxt">not loaded</span></div>
+        <div class="bar-track"><div class="bar-fill" id="engineBar"></div></div></div>
+      <div class="bar-wrap"><div class="bar-label"><span>Files</span><span id="fileProgTxt">0 / 0</span></div>
+        <div class="bar-track"><div class="bar-fill" id="fileBar"></div></div></div>
+      <div class="bar-wrap"><div class="bar-label"><span>Current segment</span><span id="stageProgTxt">idle</span></div>
+        <div class="bar-track"><div class="bar-fill" id="stageBar"></div></div></div>
+      <div class="bar-wrap" id="uploadBarWrap" style="display:none;"><div class="bar-label"><span>Uploads</span><span id="uploadProgTxt">0 / 0</span></div>
+        <div class="bar-track"><div class="bar-fill" id="uploadBar"></div></div></div>
+      <div class="status-line" id="statusLine">Ready. First run downloads the processing engine (~30MB) — that can take 10–60s depending on your connection, then it's cached. Long concert sets are now processed in bounded segments — the log below updates continuously so you can tell it's working, not stuck.</div>
+    </div>
+
+    <div class="panel">
+      <h3>Log</h3>
+      <div class="console mono" id="consoleLog"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Output</h3>
+      <div id="outputsEmpty" style="color:var(--text-faint); font-size:0.82rem;">Processed chunks will appear here.</div>
+
+      <div id="bulkRenameBlock" style="display:none; margin-bottom:14px;">
+        <div class="field">
+          <label>Rename all — new base name (long default filenames get replaced with this + a number)</label>
+          <div class="row-inline">
+            <input type="text" id="bulkRenameInp" placeholder="e.g. Friday Set" style="flex:1;">
+            <button class="btn-sm" id="bulkRenameBtn">Rename All</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="outputs" id="outputsList"></div>
+      <button class="zip-btn" id="zipBtn" style="display:none;">Download All As .zip</button>
+
+      <div id="showBuildBlock" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+        <button class="fire-btn" id="goAssetSettingsBtn">Manage Uploads &amp; Build Show in Asset Settings →</button>
+        <div class="settings-note" style="margin-top:8px;">
+          Uploading tracks, whitelisting alt accounts, and building the show's <code class="mono">.rbxm</code>
+          all live in one place now — the <b>Asset Settings</b> tab. Your processed chunks from this batch
+          are already queued there.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ROBLOX ASSETS VIEW ============ -->
+  <div id="view-assets" class="hidden-view">
+    <div class="panel">
+      <h3>Show</h3>
+      <div class="field">
+        <label>Show name</label>
+        <input type="text" id="showNameInp" placeholder="e.g. Friday Night Set">
+      </div>
+      <div class="settings-note">
+        This renames the show folder inside the .rbxm when you build below (used to be a separate manual
+        Studio step — not anymore).
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Uploads</h3>
+      <div class="settings-note">
+        Upload everything processed in the Process tab, then build the show file — both now live here
+        instead of on the Process tab.
+      </div>
+      <button class="zip-btn" id="uploadAllBtn" style="display:none; margin-top:10px;">Upload All To Roblox</button>
+      <button class="fire-btn" id="buildShowBtn" style="display:none; margin-top:10px;">Upload All &amp; Build Show</button>
+      <div class="settings-note" id="showBuildNote" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Audio Permissions</h3>
+      <div class="settings-note">
+        This grants a Roblox account permission to actually <b>use</b> your uploaded audio in their own
+        games — Roblox's real asset-permission system, separate from the Show-Control Whitelist below.
+        The typical case: you uploaded from an alt account, and your main account (or someone else's)
+        needs to be able to insert these audio IDs into their own place. Whoever's connected/API key is
+        used here needs to own the assets being shared.
+      </div>
+      <div class="grid" style="margin-top:10px;">
+        <div class="field" style="grid-column: span 2;">
+          <label>Roblox username to grant access to</label>
+          <input type="text" id="permGrantNameInp" placeholder="RobloxUsername" autocomplete="off">
+        </div>
+      </div>
+      <button class="fire-btn" id="permGrantBtn" style="margin-top:10px;">Grant Access to All Uploaded Tracks</button>
+      <div id="permGrantResults" style="margin-top:14px; display:flex; flex-direction:column; gap:6px;"></div>
+      <div class="settings-note" id="permGrantNote" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Show-Control Whitelist</h3>
+      <div class="settings-note">
+        Usernames listed here are allowed to trigger/control shows via chat commands. Building below bakes
+        this list directly into the <code class="mono">Whitelist</code> module inside the .rbxm — nothing to
+        manually swap out in Studio.
+      </div>
+      <div class="grid" style="margin-top:10px;">
+        <div class="field" style="grid-column: span 2;">
+          <label>Add username</label>
+          <input type="text" id="whitelistNameInp" placeholder="RobloxUsername" autocomplete="off">
+        </div>
+      </div>
+      <button class="fire-btn" id="whitelistAddBtn" style="margin-top:10px;">Add</button>
+      <div id="whitelistList" style="margin-top:14px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+      <div class="settings-note" id="whitelistNote" style="margin-top:8px;"></div>
+      <button class="btn-sm" id="whitelistDownloadBtn" style="margin-top:10px;">Download standalone Whitelist.rbxmx</button>
+    </div>
+
+    <div class="panel">
+      <h3>Build options</h3>
+      <div class="row-inline">
+        <input type="checkbox" id="obfuscateChk" style="width:16px; height:16px;">
+        <label for="obfuscateChk" style="font-size:0.85rem; color:var(--text-dim);">
+          Minify the Server/Commands/AudioClient scripts (strip comments &amp; extra whitespace) before
+          building
+        </label>
+      </div>
+      <div class="settings-note" style="margin-top:8px;">
+        Heads up on what this can and can't do: Roblox doesn't support shipping "encrypted" scripts that
+        still run — whoever has Studio access to a place can always read a Script's Source there, full stop.
+        The good news is that <b>Server</b> and <b>Commands</b> (the whitelist-check logic) run with
+        <code class="mono">RunContext = Server</code>, which Roblox never sends to players or exploits in
+        the first place — only client-side <b>LocalScripts</b> (the playback/sync script here) are ever
+        exposed to someone running exploit tools. This option just strips comments/whitespace from those
+        three scripts to make casual reading harder if you hand the file to someone else; it's minification,
+        not real encryption. The <b>Whitelist</b> module is left fully readable either way, since you're
+        meant to keep editing it here.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Build &amp; Download</h3>
+      <div class="settings-note">
+        Takes the bundled <code class="mono">XrAudioSystem.rbxm</code> template, renames the show folder,
+        writes every uploaded track from the Process tab into the show's Sound slots (up to
+        <span id="slotCapNote">the template's slot count</span> tracks — read directly from the file, not
+        hard-coded), bakes in the whitelist above, and gives you back one updated
+        <code class="mono">.rbxm</code> — insert it into Studio same as before, no manual editing.
+      </div>
+      <button class="fire-btn" id="buildRbxmBtn" style="margin-top:14px;">Build &amp; Download Updated XrAudioSystem.rbxm</button>
+      <div class="settings-note" id="buildRbxmNote" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <!-- ============ HISTORY VIEW ============ -->
+  <div id="view-history" class="hidden-view">
+    <div class="panel">
+      <h3>Recent Activity</h3>
+      <div class="settings-note">
+        A running log of what's happened in this browser — files processed, renames, uploads, and shows
+        built. Kept locally on this device only; clearing it doesn't undo anything.
+      </div>
+      <div class="row-inline" style="margin-top:12px; gap:10px;">
+        <button class="btn-sm" id="historyClearBtn">Clear history</button>
+        <span style="font-size:0.8rem; color:var(--text-dim);" id="historyCountNote"></span>
+      </div>
+      <div id="historyEmpty" style="color:var(--text-faint); font-size:0.82rem; margin-top:14px;">Nothing here yet — process, rename, or upload something and it'll show up.</div>
+      <div id="historyList" style="margin-top:10px; display:flex; flex-direction:column; gap:6px;"></div>
+    </div>
+  </div>
+
+  <!-- ============ SETTINGS VIEW ============ -->
+  <div id="view-settings" class="hidden-view">
+    <div class="panel">
+      <h3>Background</h3>
+      <div class="settings-note">Add an image or GIF behind the whole app. It sits behind a dimmer so text stays readable — adjust that below.</div>
+      <div class="row-inline" style="margin-top:12px; gap:10px;">
+        <button class="btn-sm" id="bgUploadBtn">Choose image / GIF…</button>
+        <button class="btn-sm" id="bgRemoveBtn">Remove background</button>
+        <input type="file" id="bgFileInput" accept="image/*" style="display:none;">
+      </div>
+      <div class="field" style="margin-top:14px;">
+        <label>Dim overlay — <span id="bgDimLabel">55</span>%</label>
+        <input type="range" id="bgDimRange" min="0" max="95" value="55">
+      </div>
+      <div class="settings-note" id="bgStatusNote" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Appearance</h3>
+      <div class="theme-row">
+        <div class="theme-opt active" data-theme="dark">Dark</div>
+        <div class="theme-opt" data-theme="light">Light</div>
+      </div>
+      <div class="settings-note">Black &amp; white throughout — this just flips which one is the background.</div>
+    </div>
+
+    <div class="panel">
+      <h3>Accent Theme</h3>
+      <div class="settings-note" style="margin-top:0 0 10px;">Colors the highlights — active tab, main button, progress bar, toggles. Works with either Dark or Light above.</div>
+      <div class="accent-grid" id="accentGrid"></div>
+
+      <div class="custom-gradient-box">
+        <div class="settings-note" style="margin:0 0 10px; font-weight:700; color:var(--text-dim); text-transform:uppercase; font-size:0.68rem; letter-spacing:0.6px;">Make your own</div>
+        <div class="custom-gradient-preview" id="cgPreview"></div>
+        <div class="custom-gradient-row">
+          <div class="cg-field">
+            <label>Color 1</label>
+            <input type="color" id="cgColor1" value="#ff512f">
+          </div>
+          <div class="cg-field">
+            <label>Color 2</label>
+            <input type="color" id="cgColor2" value="#f09819">
+          </div>
+          <div class="cg-field cg-angle-field">
+            <label>Angle — <span id="cgAngleLabel">135</span>°</label>
+            <input type="range" id="cgAngle" min="0" max="360" value="135">
+          </div>
+          <button class="cg-apply-btn" id="cgApplyBtn">Use this gradient</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Roblox Account</h3>
+      <p style="font-size:0.85rem; color:var(--text-dim); margin:0 0 4px;">
+        Manage your connection from the <b style="color:var(--text);">Link Account</b> button (or your avatar,
+        once connected) in the top right of the app.
+      </p>
+      <div class="settings-note" id="rbxOauthError" style="margin-top:8px; color:var(--danger);"></div>
+      <div class="settings-note" id="serverKeyStatus" style="margin-top:8px;"></div>
+      <div class="settings-note" style="margin-top:8px;">
+        Uploads happen under your own Roblox account — you'll see a normal Roblox sign-in and consent screen,
+        and can revoke access any time from your Roblox account's connected-apps settings. Uploaded audio still
+        goes through Roblox's standard moderation review before it's usable.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Lock Screen</h3>
+      <div class="settings-note">
+        The password is set in the site's source (<code class="mono">CONFIG.passwordHash</code> near the top
+        of the script) as a SHA-256 hash, not the plain password — change it before you deploy. This is a
+        simple front-door lock, not real access control; for anything sensitive, put the deployment behind
+        your host's own auth (e.g. Vercel's password protection) too.
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">Processing runs entirely in your browser — audio files never leave your device except when you choose to upload to Roblox.</div>
+</div>
+
+<div id="madeBy">made by xr1vs</div>
+
+<div id="tutorialBackdrop">
+  <div id="tutorialSpotlight"></div>
+  <div id="tutorialArrow"></div>
+  <div id="tutorialCard">
+    <div class="tstep" id="tutStep">Step 1 / 7</div>
+    <h4 id="tutTitle"></h4>
+    <p id="tutText"></p>
+    <div class="trow">
+      <button class="tskip" id="tutSkip">Skip tutorial</button>
+      <div style="display:flex; gap:8px;">
+        <button class="tbtn ghost" id="tutBack">Back</button>
+        <button class="tbtn" id="tutNext">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const TUTORIAL_KEY = 'xr_tutorial_done_v1';
+  const steps = [
+    { view:'process', selector:'#dropzone', title:'Add your audio', text:'Drop MP3, WAV, OGG, FLAC, or M4A files here, or click to browse. You can queue up several files at once.' },
+    { view:'process', selector:'.modes', title:'Song vs. Concert Set', text:'Concert Set adds extra gating and noise handling for long, noisy live recordings — use it for DJ sets and full shows, not single tracks.' },
+    { view:'process', selector:'#splitMin', title:'Chunk length & big files', text:'Long sets get split into Roblox-length chunks. Big concert sets are now also processed internally in bounded pieces, so very long files won\u2019t stall or crash partway through.' },
+    { view:'process', selector:'#processBtn', title:'Process', text:'Click here to start. Processing runs entirely in your browser \u2014 nothing uploads anywhere yet.' },
+    { view:'process', selector:'#consoleLog', title:'Watch the log', text:'This updates continuously while a file processes \u2014 segment-by-segment progress, percentages, and time estimates. If it\u2019s moving, it\u2019s working, not stuck.' },
+    { view:'process', selector:'#outputsList', title:'Download or upload', text:'Once a chunk is ready, download it or send it to Roblox with one click. Turn on \u201cAuto-upload\u201d above the Process button to upload every chunk automatically as soon as it finishes.' },
+    { view:'process', selector:'#rbxAccountChip', title:'Your Roblox account', text:'You connected this when you first opened the app. Uploads happen as this account — click it any time to disconnect and switch accounts.' },
+  ];
+  let idx = 0;
+  const backdrop = document.getElementById('tutorialBackdrop');
+  const spotlight = document.getElementById('tutorialSpotlight');
+  const card = document.getElementById('tutorialCard');
+  const arrow = document.getElementById('tutorialArrow');
+  const stepTxt = document.getElementById('tutStep');
+  const titleTxt = document.getElementById('tutTitle');
+  const bodyTxt = document.getElementById('tutText');
+  const nextBtn = document.getElementById('tutNext');
+  const backBtn = document.getElementById('tutBack');
+  const skipBtn = document.getElementById('tutSkip');
+  const replayBtn = document.getElementById('tutorialReplayBtn');
+
+  function switchToView(view){
+    document.querySelectorAll('.tab').forEach(t=> t.classList.toggle('active', t.dataset.view === view));
+    document.getElementById('view-process').classList.toggle('hidden-view', view!=='process');
+    document.getElementById('view-assets').classList.toggle('hidden-view', view!=='assets');
+    document.getElementById('view-settings').classList.toggle('hidden-view', view!=='settings');
+  }
+
+  function place(){
+    const step = steps[idx];
+    if(!step) return;
+    switchToView(step.view);
+    requestAnimationFrame(()=>{
+      let el = document.querySelector(step.selector);
+      if(el && el.getClientRects().length === 0 && step.altSelector) el = document.querySelector(step.altSelector);
+      if(!el){ nextStep(); return; }
+      el.scrollIntoView({block:'center', behavior:'instant' in document.documentElement.style ? 'instant' : 'auto'});
+      requestAnimationFrame(()=>{
+        const r = el.getBoundingClientRect();
+        const pad = 8;
+        spotlight.style.top = (r.top - pad) + 'px';
+        spotlight.style.left = (r.left - pad) + 'px';
+        spotlight.style.width = (r.width + pad*2) + 'px';
+        spotlight.style.height = (r.height + pad*2) + 'px';
+
+        const cardW = 270;
+        const spaceBelow = window.innerHeight - r.bottom;
+        const putBelow = spaceBelow > 190;
+        const cardLeft = Math.min(Math.max(10, r.left), window.innerWidth - cardW - 10);
+        const cardTop = putBelow ? (r.bottom + pad + 16) : Math.max(10, r.top - pad - 156);
+        const arrowTop = putBelow ? (r.bottom + pad + 4) : (r.top - pad - 12);
+        const arrowLeft = Math.min(Math.max(cardLeft + 20, r.left + r.width/2 - 8), window.innerWidth - 30);
+
+        card.style.top = cardTop + 'px';
+        card.style.left = cardLeft + 'px';
+        arrow.style.top = arrowTop + 'px';
+        arrow.style.left = arrowLeft + 'px';
+
+        stepTxt.textContent = `Step ${idx+1} / ${steps.length}`;
+        titleTxt.textContent = step.title;
+        bodyTxt.textContent = step.text;
+        backBtn.style.visibility = idx===0 ? 'hidden' : 'visible';
+        nextBtn.textContent = idx===steps.length-1 ? 'Done' : 'Next';
+      });
+    });
+  }
+
+  function start(){ idx = 0; backdrop.classList.add('active'); place(); }
+  function stop(done){
+    backdrop.classList.remove('active');
+    if(done) localStorage.setItem(TUTORIAL_KEY, '1');
+    switchToView('process');
+  }
+  function nextStep(){ if(idx >= steps.length-1){ stop(true); return; } idx++; place(); }
+  function prevStep(){ if(idx<=0) return; idx--; place(); }
+
+  nextBtn.addEventListener('click', nextStep);
+  backBtn.addEventListener('click', prevStep);
+  skipBtn.addEventListener('click', ()=> stop(true));
+  replayBtn.addEventListener('click', start);
+  window.addEventListener('resize', ()=>{ if(backdrop.classList.contains('active')) place(); });
+
+  // Auto-launch once for first-time users, right after they unlock the app.
+  document.addEventListener('xr-unlocked', ()=>{
+    if(!localStorage.getItem(TUTORIAL_KEY)) setTimeout(start, 500);
+  });
+})();
+</script>
+
+<script src="/rbxm-patcher.js"></script>
+<script>
+  // =========================================================
+  // CONFIG — change before deploying
+  // =========================================================
+  const CONFIG = {
+    // SHA-256 hash of the unlock password. Default below = "changeme".
+    // Generate your own in a browser console with:
+    //   crypto.subtle.digest('SHA-256', new TextEncoder().encode('yourpassword'))
+    //     .then(b => console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
+    passwordHash: "057ba03d6c44104863dc7361fe4578965d1887360f90a0895882e58a6248fc86",
+  };
+
+  async function sha256(str){
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return [...new Uint8Array(buf)].map(x=>x.toString(16).padStart(2,'0')).join('');
+  }
+
+  const lock = document.getElementById('lock');
+  const app = document.getElementById('app');
+  const lockInput = document.getElementById('lockInput');
+  const lockBtn = document.getElementById('lockBtn');
+  const lockErr = document.getElementById('lockErr');
+
+  async function tryUnlock(){
+    const hash = await sha256(lockInput.value);
+    if(hash === CONFIG.passwordHash || sessionStorage.getItem('unlocked') === '1'){
+      sessionStorage.setItem('unlocked', '1');
+      lock.classList.add('hidden');
+      document.dispatchEvent(new CustomEvent('xr-unlocked'));
+    } else {
+      lockErr.textContent = 'Incorrect password.';
+      lockInput.value=''; lockInput.focus();
+    }
+  }
+  lockBtn.addEventListener('click', tryUnlock);
+  lockInput.addEventListener('keydown', e=>{ if(e.key==='Enter') tryUnlock(); });
+  if(sessionStorage.getItem('unlocked') === '1'){ setTimeout(tryUnlock, 0); }
+
+  // =========================================================
+  // Tabs
+  // =========================================================
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById('view-process').classList.toggle('hidden-view', t.dataset.view!=='process');
+      document.getElementById('view-assets').classList.toggle('hidden-view', t.dataset.view!=='assets');
+      document.getElementById('view-history').classList.toggle('hidden-view', t.dataset.view!=='history');
+      document.getElementById('view-settings').classList.toggle('hidden-view', t.dataset.view!=='settings');
+      if(t.dataset.view==='history' && typeof renderHistory === 'function') renderHistory();
+    });
+  });
+  // Lets other parts of the app (e.g. the "Manage in Asset Settings" redirect
+  // button) switch tabs programmatically, same as clicking one.
+  function goToTab(view){
+    const tabEl = document.querySelector(`.tab[data-view="${view}"]`);
+    if(tabEl) tabEl.click();
+  }
+
+  // =========================================================
+  // History / recent activity
+  // =========================================================
+  const HISTORY_KEY = 'xr_history_log';
+  const HISTORY_MAX = 200;
+  function loadHistory(){
+    try{ return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }catch(e){ return []; }
+  }
+  function saveHistory(list){
+    try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(-HISTORY_MAX))); }catch(e){ /* storage full/unavailable — non-fatal */ }
+  }
+  // type is used only for a small left-edge label/color; keep it short.
+  function addHistory(type, text){
+    const list = loadHistory();
+    list.push({ ts: Date.now(), type, text });
+    saveHistory(list);
+    if(!document.getElementById('view-history').classList.contains('hidden-view')) renderHistory();
+  }
+  window.addHistory = addHistory;
+  function fmtHistoryTs(ts){
+    const d = new Date(ts);
+    const sameDay = d.toDateString() === new Date().toDateString();
+    const time = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    return sameDay ? time : d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + time;
+  }
+  function renderHistory(){
+    const list = loadHistory();
+    const wrap = document.getElementById('historyList');
+    const empty = document.getElementById('historyEmpty');
+    const countNote = document.getElementById('historyCountNote');
+    if(!wrap) return;
+    countNote.textContent = list.length ? `${list.length} entr${list.length===1?'y':'ies'}` : '';
+    if(list.length === 0){ empty.style.display='block'; wrap.innerHTML=''; return; }
+    empty.style.display='none';
+    wrap.innerHTML = list.slice().reverse().map(item=>{
+      return `<div style="display:flex; gap:12px; align-items:baseline; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--surface);">
+        <span class="mono" style="color:var(--text-faint); font-size:0.72rem; white-space:nowrap;">${fmtHistoryTs(item.ts)}</span>
+        <span style="font-size:0.83rem; color:var(--text);">${item.text}</span>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('historyClearBtn').addEventListener('click', ()=>{
+    if(!confirm('Clear all history entries? This only clears the log, not any files or uploads.')) return;
+    saveHistory([]);
+    renderHistory();
+  });
+  window.renderHistory = renderHistory;
+
+  // Theme
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  document.documentElement.dataset.theme = savedTheme;
+  document.querySelectorAll('.theme-opt').forEach(o=>{
+    if(o.dataset.theme===savedTheme) o.classList.add('active');
+    o.addEventListener('click', ()=>{
+      document.querySelectorAll('.theme-opt').forEach(x=>x.classList.remove('active'));
+      o.classList.add('active');
+      document.documentElement.dataset.theme = o.dataset.theme;
+      localStorage.setItem('theme', o.dataset.theme);
+    });
+  });
+
+  // Background image / GIF
+  const BG_IMAGE_KEY = 'xr_bg_image';
+  const BG_DIM_KEY = 'xr_bg_dim';
+  const bgLayer = document.getElementById('bgLayer');
+  const bgDim = document.getElementById('bgDim');
+  const bgFileInput = document.getElementById('bgFileInput');
+  const bgStatusNote = document.getElementById('bgStatusNote');
+  const bgDimRange = document.getElementById('bgDimRange');
+  const bgDimLabel = document.getElementById('bgDimLabel');
+
+  function applyBgDim(pct){
+    bgDim.style.opacity = (pct/100).toFixed(2);
+    bgDimLabel.textContent = pct;
+  }
+  function applyBgImage(dataUrl){
+    if(dataUrl){
+      bgLayer.style.backgroundImage = `url("${dataUrl}")`;
+      bgLayer.style.opacity = '1';
+    } else {
+      bgLayer.style.backgroundImage = 'none';
+      bgLayer.style.opacity = '0';
+    }
+  }
+  (function initBg(){
+    const savedDim = parseInt(localStorage.getItem(BG_DIM_KEY) || '55');
+    bgDimRange.value = savedDim;
+    applyBgDim(savedDim);
+    try{
+      const saved = localStorage.getItem(BG_IMAGE_KEY);
+      if(saved){ applyBgImage(saved); bgStatusNote.textContent = 'Custom background active.'; }
+    }catch(e){ /* ignore */ }
+  })();
+  bgDimRange.addEventListener('input', ()=>{
+    const v = parseInt(bgDimRange.value);
+    applyBgDim(v);
+    localStorage.setItem(BG_DIM_KEY, String(v));
+  });
+  document.getElementById('bgUploadBtn').addEventListener('click', ()=> bgFileInput.click());
+  bgFileInput.addEventListener('change', ()=>{
+    const f = bgFileInput.files[0];
+    if(!f) return;
+    if(f.size > 8*1024*1024){
+      bgStatusNote.textContent = 'That file is over 8MB — pick something smaller (localStorage has limited space).';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{
+        localStorage.setItem(BG_IMAGE_KEY, reader.result);
+        applyBgImage(reader.result);
+        bgStatusNote.textContent = `Background set (${f.name}) ✓`;
+      }catch(e){
+        bgStatusNote.textContent = 'Could not save that image — it may be too large for local storage. Try a smaller file.';
+      }
+    };
+    reader.readAsDataURL(f);
+  });
+  document.getElementById('bgRemoveBtn').addEventListener('click', ()=>{
+    localStorage.removeItem(BG_IMAGE_KEY);
+    applyBgImage(null);
+    bgStatusNote.textContent = 'Background removed.';
+  });
+
+  // Accent Theme (gradient presets + custom builder)
+  const ACCENT_PRESETS = [
+    { id:'mono',     name:'Mono',      css:null },
+    { id:'sunset',   name:'Sunset',    css:'linear-gradient(135deg,#ff512f,#f09819)' },
+    { id:'ocean',    name:'Ocean',     css:'linear-gradient(135deg,#2193b0,#6dd5ed)' },
+    { id:'aurora',   name:'Aurora',    css:'linear-gradient(135deg,#00c9ff,#21e6c1)' },
+    { id:'grape',    name:'Grape',     css:'linear-gradient(135deg,#7f00ff,#e100ff)' },
+    { id:'forest',   name:'Forest',    css:'linear-gradient(135deg,#134e5e,#71b280)' },
+    { id:'fire',     name:'Fire',      css:'linear-gradient(135deg,#f83600,#f9d423)' },
+    { id:'midnight', name:'Midnight',  css:'linear-gradient(135deg,#0f2027,#2c5364)' },
+    { id:'roseGold', name:'Rose Gold', css:'linear-gradient(135deg,#b76e79,#8d5a68)' },
+    { id:'neon',     name:'Neon',      css:'linear-gradient(135deg,#12c2e9,#c471ed,#f64f59)' },
+    { id:'lime',     name:'Lime',      css:'linear-gradient(135deg,#56ab2f,#a8e063)' },
+    { id:'berry',    name:'Berry',     css:'linear-gradient(135deg,#8e2de2,#4a00e0)' },
+  ];
+  const ACCENT_MODE_KEY = 'xr_accent_mode';
+  const ACCENT_CUSTOM_KEY = 'xr_accent_custom';
+
+  const accentGrid = document.getElementById('accentGrid');
+  const cgPreview = document.getElementById('cgPreview');
+  const cgColor1 = document.getElementById('cgColor1');
+  const cgColor2 = document.getElementById('cgColor2');
+  const cgAngle = document.getElementById('cgAngle');
+  const cgAngleLabel = document.getElementById('cgAngleLabel');
+  const cgApplyBtn = document.getElementById('cgApplyBtn');
+
+  function loadCustomAccent(){
+    try{
+      const raw = localStorage.getItem(ACCENT_CUSTOM_KEY);
+      if(raw) return JSON.parse(raw);
+    }catch(e){}
+    return { c1:'#ff512f', c2:'#f09819', angle:135 };
+  }
+  function customGradientCss(custom){
+    return `linear-gradient(${custom.angle}deg, ${custom.c1}, ${custom.c2})`;
+  }
+
+  let currentAccentMode = localStorage.getItem(ACCENT_MODE_KEY) || 'mono';
+  let customAccent = loadCustomAccent();
+
+  function applyAccent(mode){
+    currentAccentMode = mode;
+    localStorage.setItem(ACCENT_MODE_KEY, mode);
+    if(mode === 'mono'){
+      document.documentElement.style.removeProperty('--accent');
+      document.documentElement.style.removeProperty('--accent-fg');
+    } else if(mode === 'custom'){
+      document.documentElement.style.setProperty('--accent', customGradientCss(customAccent));
+      document.documentElement.style.setProperty('--accent-fg', '#ffffff');
+    } else {
+      const preset = ACCENT_PRESETS.find(p=>p.id===mode);
+      if(preset && preset.css){
+        document.documentElement.style.setProperty('--accent', preset.css);
+        document.documentElement.style.setProperty('--accent-fg', '#ffffff');
+      }
+    }
+    updateAccentActiveStates();
+  }
+
+  function updateAccentActiveStates(){
+    document.querySelectorAll('.accent-swatch').forEach(el=>{
+      el.classList.toggle('active', el.dataset.accentId === currentAccentMode);
+    });
+  }
+
+  // Build the preset grid
+  ACCENT_PRESETS.forEach(preset=>{
+    const sw = document.createElement('div');
+    sw.className = 'accent-swatch' + (preset.id==='mono' ? ' mono' : '');
+    sw.dataset.accentId = preset.id;
+    sw.style.background = preset.css || 'var(--fg)';
+    sw.innerHTML = `<span class="sw-name">${preset.name}</span>`;
+    sw.addEventListener('click', ()=> applyAccent(preset.id));
+    accentGrid.appendChild(sw);
+  });
+  // Custom swatch — always shows the user's current custom gradient, lives at the end of the grid
+  const customSwatch = document.createElement('div');
+  customSwatch.className = 'accent-swatch custom-swatch';
+  customSwatch.dataset.accentId = 'custom';
+  customSwatch.innerHTML = `<span class="sw-name">Custom</span>`;
+  customSwatch.addEventListener('click', ()=> applyAccent('custom'));
+  accentGrid.appendChild(customSwatch);
+
+  function refreshCustomPreview(){
+    const css = customGradientCss(customAccent);
+    cgPreview.style.background = css;
+    customSwatch.style.background = css;
+  }
+  function syncCustomControls(){
+    cgColor1.value = customAccent.c1;
+    cgColor2.value = customAccent.c2;
+    cgAngle.value = customAccent.angle;
+    cgAngleLabel.textContent = customAccent.angle;
+    refreshCustomPreview();
+  }
+  function saveCustomAccent(){
+    localStorage.setItem(ACCENT_CUSTOM_KEY, JSON.stringify(customAccent));
+    refreshCustomPreview();
+    // Live-update if custom is already the active accent, so changes preview instantly.
+    if(currentAccentMode === 'custom') applyAccent('custom');
+  }
+  cgColor1.addEventListener('input', ()=>{ customAccent.c1 = cgColor1.value; saveCustomAccent(); });
+  cgColor2.addEventListener('input', ()=>{ customAccent.c2 = cgColor2.value; saveCustomAccent(); });
+  cgAngle.addEventListener('input', ()=>{
+    customAccent.angle = Number(cgAngle.value);
+    cgAngleLabel.textContent = customAccent.angle;
+    saveCustomAccent();
+  });
+  cgApplyBtn.addEventListener('click', ()=> applyAccent('custom'));
+
+  syncCustomControls();
+  applyAccent(currentAccentMode);
+
+  // Roblox OAuth connect/disconnect
+  const rbxAccountChip = document.getElementById('rbxAccountChip');
+  const rbxAvatarImg = document.getElementById('rbxAvatarImg');
+  const rbxUsernameLabel = document.getElementById('rbxUsernameLabel');
+  const rbxMenu = document.getElementById('rbxMenu');
+  const rbxMenuDisconnect = document.getElementById('rbxMenuDisconnect');
+  const rbxOauthError = document.getElementById('rbxOauthError');
+
+  rbxAccountChip.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    rbxMenu.classList.toggle('open');
+  });
+  document.addEventListener('click', ()=>{ rbxMenu.classList.remove('open'); });
+  rbxMenuDisconnect.addEventListener('click', async (e)=>{
+    e.stopPropagation();
+    rbxMenu.classList.remove('open');
+    rbxMenuDisconnect.disabled = true;
+    try{ await fetch('/api/roblox/oauth-logout', {method:'POST'}); } catch(e){}
+    await refreshRbxStatus();
+    rbxMenuDisconnect.disabled = false;
+  });
+
+  async function refreshRbxStatus(){
+    try{
+      const s = await fetch('/api/roblox/oauth-status').then(r=>r.json());
+      rbxAccountChip.style.display = s.connected ? 'flex' : 'none';
+      if(s.connected){
+        rbxUsernameLabel.textContent = s.displayName || s.userId;
+        if(s.avatarUrl){ rbxAvatarImg.src = s.avatarUrl; rbxAvatarImg.style.display = ''; }
+        else { rbxAvatarImg.style.display = 'none'; }
+      }
+      const el = document.getElementById('serverKeyStatus');
+      el.textContent = s.hasServerKey
+        ? 'This deployment also has a shared server-side key configured as a fallback for anyone who doesn\u2019t connect their own account.'
+        : '';
+      return s;
+    } catch(err){
+      document.getElementById('rbxOauthError').textContent = 'Could not check connection status: ' + err.message;
+      return null;
+    }
+  }
+  refreshRbxStatus();
+
+  // =========================================================
+  // Roblox connect gate — shown right after unlocking, before the app
+  // itself, instead of a small top-right button someone could ignore.
+  // =========================================================
+  const rbxGate = document.getElementById('rbxGate');
+  const rbxGateConnectBtn = document.getElementById('rbxGateConnectBtn');
+  const rbxGateSkipBtn = document.getElementById('rbxGateSkipBtn');
+  const rbxGateNote = document.getElementById('rbxGateNote');
+
+  rbxGateConnectBtn.addEventListener('click', ()=>{
+    window.location.href = '/api/roblox/oauth-login';
+  });
+  rbxGateSkipBtn.addEventListener('click', ()=>{
+    sessionStorage.setItem('xr_rbx_gate_skipped', '1');
+    rbxGate.classList.add('hidden-view');
+    app.classList.add('shown');
+  });
+
+  async function maybeShowRbxGate(){
+    if(sessionStorage.getItem('xr_rbx_gate_skipped') === '1'){ app.classList.add('shown'); return; }
+    const s = await refreshRbxStatus();
+    if(s && s.connected){ app.classList.add('shown'); return; }
+    if(s && s.hasServerKey){
+      rbxGateNote.textContent = 'This deployment also has a shared server-side key configured, so connecting your own account is optional.';
+    } else {
+      rbxGateNote.textContent = '';
+    }
+    rbxGate.classList.remove('hidden-view');
+  }
+
+  document.addEventListener('xr-unlocked', maybeShowRbxGate);
+
+  // Roblox redirects back here with ?connected=1 or ?rbx_error=... — surface
+  // it, then clean the URL so a refresh doesn't repeat the message.
+  (function(){
+    const params = new URLSearchParams(window.location.search);
+    if(params.get('connected')){
+      refreshRbxStatus();
+    } else if(params.get('rbx_error')){
+      rbxOauthError.textContent = 'Roblox connection failed: ' + params.get('rbx_error');
+      const gateNote = document.getElementById('rbxGateNote');
+      if(gateNote) gateNote.textContent = 'Connection failed: ' + params.get('rbx_error') + ' — try again, or skip for now.';
+    }
+    if(params.has('connected') || params.has('rbx_error')){
+      params.delete('connected'); params.delete('rbx_error');
+      const q = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (q ? '?'+q : ''));
+    }
+  })();
+
+  // Show-control whitelist (usernames allowed to trigger shows)
+  const WL_KEY = 'xr_whitelist_usernames';
+  const whitelistList = document.getElementById('whitelistList');
+  const whitelistNameInp = document.getElementById('whitelistNameInp');
+  const whitelistNote = document.getElementById('whitelistNote');
+
+  function loadWhitelist(){
+    try{ return JSON.parse(localStorage.getItem(WL_KEY) || '[]'); }
+    catch(e){ return []; }
+  }
+  function saveWhitelist(names){
+    localStorage.setItem(WL_KEY, JSON.stringify(names));
+  }
+  // Roblox usernames: letters, digits, single internal underscores, 3-20 chars.
+  function isValidRobloxUsername(name){
+    return /^[A-Za-z0-9_]{3,20}$/.test(name) && !name.startsWith('_') && !name.endsWith('_') && !name.includes('__');
+  }
+  function renderWhitelist(){
+    const names = loadWhitelist();
+    whitelistList.innerHTML = '';
+    if(names.length === 0){
+      whitelistList.innerHTML = '<span style="color:var(--text-faint); font-size:0.82rem;">No usernames added yet.</span>';
+      return;
+    }
+    names.forEach((name, i)=>{
+      const chip = document.createElement('span');
+      chip.className = 'mono';
+      chip.style.cssText = 'display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--border); border-radius:999px; font-size:0.82rem;';
+      chip.textContent = name;
+      const x = document.createElement('button');
+      x.textContent = '×';
+      x.setAttribute('aria-label', 'Remove ' + name);
+      x.style.cssText = 'background:none; border:none; cursor:pointer; font-size:0.95rem; line-height:1; color:var(--text-faint); padding:0;';
+      x.addEventListener('click', ()=>{
+        const cur = loadWhitelist();
+        cur.splice(i, 1);
+        saveWhitelist(cur);
+        renderWhitelist();
+      });
+      chip.appendChild(x);
+      whitelistList.appendChild(chip);
+    });
+  }
+  function addWhitelistName(){
+    const raw = whitelistNameInp.value.trim();
+    if(!raw) return;
+    if(!isValidRobloxUsername(raw)){
+      whitelistNote.textContent = `"${raw}" doesn't look like a valid Roblox username — skipped.`;
+      return;
+    }
+    const names = loadWhitelist();
+    if(names.some(n => n.toLowerCase() === raw.toLowerCase())){
+      whitelistNote.textContent = `${raw} is already on the list.`;
+      whitelistNameInp.value = '';
+      return;
+    }
+    names.push(raw);
+    saveWhitelist(names);
+    addHistory('whitelist', `Whitelisted <b>${raw}</b> for show control (covers alt accounts uploading under a different Roblox name)`);
+    whitelistNameInp.value = '';
+    whitelistNote.textContent = '';
+    renderWhitelist();
+  }
+  document.getElementById('whitelistAddBtn').addEventListener('click', addWhitelistName);
+  whitelistNameInp.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addWhitelistName(); } });
+  renderWhitelist();
+
+  function xmlEscape(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function buildWhitelistLua(names){
+    const lines = names.map(n => `\t"${n}",`).join('\n');
+    return `-- Whitelist (ModuleScript) — place inside XrAudio folder\n` +
+      `-- Add or remove usernames from the list below.\n` +
+      `-- Generated from the Audio Prep Console Settings tab.\n\n` +
+      `local Whitelist = {\n${lines}\n}\n\nreturn Whitelist\n`;
+  }
+  function buildWhitelistRbxmx(names){
+    const source = buildWhitelistLua(names);
+    // ProtectedString bodies are plain-text (not CDATA) in Roblox's XML model format;
+    // angle brackets / ampersands inside the Lua source still need escaping.
+    return `<roblox xmlns:xmlne="http://www.roblox.com/roblox.1.dtd" version="4">\n` +
+      `  <Item class="ModuleScript" referent="RBX-Whitelist">\n` +
+      `    <Properties>\n` +
+      `      <string name="Name">Whitelist</string>\n` +
+      `      <ProtectedString name="Source">${xmlEscape(source)}</ProtectedString>\n` +
+      `    </Properties>\n` +
+      `  </Item>\n` +
+      `</roblox>\n`;
+  }
+  document.getElementById('whitelistDownloadBtn').addEventListener('click', ()=>{
+    const names = loadWhitelist();
+    if(names.length === 0){
+      whitelistNote.textContent = 'Add at least one username first.';
+      return;
+    }
+    const xml = buildWhitelistRbxmx(names);
+    const blob = new Blob([xml], {type: 'text/xml'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Whitelist.rbxmx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    whitelistNote.textContent = `Downloaded with ${names.length} username${names.length===1?'':'s'} ✓`;
+  });
+</script>
+
+<script type="module">
+import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js";
+import { toBlobURL, fetchFile } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js";
+
+const PLAYBACK_SPEED = 2.941;
+let ffmpeg = null;
+let ffmpegReady = false;
+let files = [];
+let outputBlobs = []; // {name, blob}
+let mode = 'song';
+let splitOn = true;
+
+// ---------- file list ----------
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileList = document.getElementById('fileList');
+
+document.querySelectorAll('.mode-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+  });
+});
+const splitSwitch = document.getElementById('splitSwitch');
+splitSwitch.addEventListener('click', ()=>{
+  splitOn = !splitOn;
+  splitSwitch.classList.toggle('on', splitOn);
+  updateChunkSizeNote();
+});
+let autoUploadOn = false;
+const autoUploadSwitch = document.getElementById('autoUploadSwitch');
+autoUploadSwitch.addEventListener('click', ()=>{
+  autoUploadOn = !autoUploadOn;
+  autoUploadSwitch.classList.toggle('on', autoUploadOn);
+});
+
+function updateChunkSizeNote(){
+  const note = document.getElementById('chunkSizeNote');
+  const splitMinEl = document.getElementById('splitMin');
+  const fmt = document.getElementById('fmtSel').value;
+  const bitrateKbps = {ogg_hq:384, ogg_std:256, ogg:256, mp3:190, wav:1411}[fmt] ?? 256;
+  const splitMin = parseFloat(splitMinEl.value) || 0;
+  const encodedSecs = (splitMin*60) / PLAYBACK_SPEED; // actual on-disk duration per chunk
+  const estMB = (bitrateKbps*1000/8 * encodedSecs) / (1024*1024);
+  const VERCEL_LIMIT_MB = 4.5;
+  if(!splitOn){ note.textContent = ''; return; }
+  const over = estMB > VERCEL_LIMIT_MB * 0.9;
+  note.innerHTML = `Estimated size per chunk: <b>${estMB.toFixed(1)} MB</b>` +
+    (over
+      ? ` — this is close to or over Vercel's ~4.5MB serverless upload limit and will likely 413/crash the upload. Lower the chunk length, drop the bitrate, or deploy via Railway (server.js) instead, which doesn't have this cap.`
+      : ` — comfortably under typical serverless (Vercel) upload limits.`);
+  note.style.color = over ? 'var(--danger)' : 'var(--text-dim)';
+}
+['splitMin'].forEach(id=> document.getElementById(id).addEventListener('input', updateChunkSizeNote));
+document.getElementById('fmtSel').addEventListener('change', updateChunkSizeNote);
+updateChunkSizeNote();
+
+dropzone.addEventListener('click', ()=> fileInput.click());
+dropzone.addEventListener('dragover', e=>{e.preventDefault(); dropzone.classList.add('drag');});
+dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e=>{ e.preventDefault(); dropzone.classList.remove('drag'); addFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', e=> addFiles(e.target.files));
+
+function addFiles(list){
+  for(const f of list) if(!files.find(x=>x.name===f.name && x.size===f.size)) files.push(f);
+  renderFileList();
+}
+function renderFileList(){
+  fileList.innerHTML='';
+  files.forEach((f, i)=>{
+    const div = document.createElement('div');
+    div.className='fileitem';
+    div.innerHTML = `<span>${f.name}</span><span>${(f.size/1048576).toFixed(1)} MB <span class="rm" data-i="${i}">✕</span></span>`;
+    fileList.appendChild(div);
+  });
+  fileList.querySelectorAll('.rm').forEach(el=>{
+    el.addEventListener('click', e=>{ e.stopPropagation(); files.splice(parseInt(el.dataset.i),1); renderFileList(); });
+  });
+}
+
+function setStatus(msg){ document.getElementById('statusLine').textContent = msg; }
+function setBar(id, ratio){ document.getElementById(id).style.width = Math.round(Math.max(0,Math.min(1,ratio))*100)+'%'; }
+function log(msg, cls='info'){
+  const c = document.getElementById('consoleLog');
+  const line = document.createElement('div');
+  line.className = 'lg-'+cls;
+  line.textContent = msg;
+  c.appendChild(line);
+  c.scrollTop = c.scrollHeight;
+}
+function fmtTime(s){ const m=Math.floor(s/60), sec=Math.floor(s%60); return String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0'); }
+
+// ---------- engine load with real progress ----------
+const ENGINE_CACHE = 'audio-prep-engine-v1';
+
+async function fetchWithProgress(url, onProgress){
+  // Serve from the persistent engine cache when we have it — makes every
+  // load after the first one near-instant instead of re-downloading ~30MB.
+  let cache = null;
+  try{ cache = await caches.open(ENGINE_CACHE); }catch(e){ /* cache API unavailable, fall back to network only */ }
+  if(cache){
+    const cached = await cache.match(url);
+    if(cached){ onProgress(1); return await cached.blob(); }
+  }
+
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(`Failed to fetch ${url} (${res.status})`);
+
+  // NOTE: content-length reflects the *compressed* transfer size, but the
+  // bytes we read back from the stream are already decompressed by the
+  // browser — so received can exceed total. Clamp so progress never shows
+  // more than 100%.
+  const total = parseInt(res.headers.get('content-length') || '0');
+  const reader = res.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while(true){
+    const {done, value} = await reader.read();
+    if(done) break;
+    chunks.push(value);
+    received += value.length;
+    if(total) onProgress(Math.min(1, received/total));
+  }
+  const blob = new Blob(chunks);
+  if(cache){
+    try{ await cache.put(url, new Response(blob)); }catch(e){ /* quota etc — non-fatal */ }
+  }
+  return blob;
+}
+
+function withTimeout(promise, ms, label){
+  let timer;
+  const timeout = new Promise((_, reject)=>{
+    timer = setTimeout(()=> reject(new Error(`${label} timed out after ${Math.round(ms/1000)}s — check your connection and try again`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(()=> clearTimeout(timer));
+}
+
+// Fetches a small text file through the same engine cache used for the
+// core/wasm blobs, so repeat loads don't re-fetch it.
+async function fetchCachedText(url){
+  let cache = null;
+  try{ cache = await caches.open(ENGINE_CACHE); }catch(e){ /* ignore */ }
+  if(cache){
+    const cached = await cache.match(url);
+    if(cached) return await cached.text();
+  }
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(`Failed to fetch ${url} (${res.status})`);
+  const text = await res.text();
+  if(cache){
+    try{ await cache.put(url, new Response(text)); }catch(e){ /* ignore */ }
+  }
+  return text;
+}
+
+// Builds a self-contained worker script with zero external references.
+// @ffmpeg/ffmpeg's worker.js is an ES module that statically imports
+// './const.js' and './errors.js'. Two problems stack on top of each other
+// if you try to use it straight from a CDN:
+//   1) Browsers refuse to construct a Worker from a cross-origin script URL
+//      at all — that restriction is stricter than fetch's CORS rules, no
+//      response header fixes it ("cannot be accessed from origin ...").
+//   2) Blobbing worker.js by itself dodges #1 but breaks its relative
+//      imports, since a blob: URL has no base path for them to resolve
+//      against — the worker then fails to come up and ffmpeg.load() hangs
+//      with no error at all.
+// Fetching all three files and inlining const.js/errors.js's exports as
+// plain top-level declarations (stripping import/export syntax) produces
+// one flat script with no external references, so it works fine as a
+// blob: URL worker regardless of the page's origin.
+async function buildInlinedWorkerBlobURL(ffBase){
+  const [workerSrc, constSrc, errorsSrc] = await Promise.all([
+    fetchCachedText(`${ffBase}/worker.js`),
+    fetchCachedText(`${ffBase}/const.js`),
+    fetchCachedText(`${ffBase}/errors.js`),
+  ]);
+  const inlinedConst = constSrc.replace(/^export\s+/gm, '');
+  const inlinedErrors = errorsSrc.replace(/^export\s+/gm, '');
+  const inlinedWorker = workerSrc.replace(/^import\s*\{[^}]*\}\s*from\s*["'][^"']+["'];?\s*$/gm, '');
+  const combined = `${inlinedConst}\n${inlinedErrors}\n${inlinedWorker}`;
+  return URL.createObjectURL(new Blob([combined], {type:'text/javascript'}));
+}
+
+async function ensureEngine(){
+  if(ffmpegReady) return;
+  document.getElementById('engineTxt').textContent = '0%';
+  log('Loading processing engine…', 'header');
+  ffmpeg = new FFmpeg();
+  ffmpeg.on('log', ({message})=>{
+    window.__lastFF = (window.__lastFF||'') + message + '\n';
+    // Live progress: ffmpeg prints "time=HH:MM:SS.xx" lines while it works.
+    // Parsing these and updating the UI as they arrive is what makes long
+    // operations (a 2-3hr concert set) look alive instead of frozen.
+    if(liveProgress && liveProgress.durationSecs > 0){
+      const m = message.match(/time=(\d+):(\d+):([\d.]+)/);
+      if(m){
+        const t = (+m[1])*3600 + (+m[2])*60 + parseFloat(m[3]);
+        const frac = Math.max(0, Math.min(1, t/liveProgress.durationSecs));
+        setBar('stageBar', frac);
+        document.getElementById('stageProgTxt').textContent = `${Math.round(frac*100)}%`;
+        const now = performance.now();
+        if(frac - liveProgress.lastLogFrac >= 0.1 || now - liveProgress.lastLogTime > 4000){
+          liveProgress.lastLogFrac = frac; liveProgress.lastLogTime = now;
+          log(`   ${liveProgress.label}: ${Math.round(frac*100)}% (${fmtTime(t)} / ${fmtTime(liveProgress.durationSecs)})`, 'info');
+          setStatus(`${liveProgress.label} — ${Math.round(frac*100)}%`);
+        }
+      }
+    }
+  });
+
+  const coreBase = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+  const ffBase = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+
+  const parts = { core:0, wasm:0 };
+  const weight = { core:0.15, wasm:0.85 };
+  function overall(){ return parts.core*weight.core + parts.wasm*weight.wasm; }
+  function bump(){ const p = Math.min(1, overall()); setBar('engineBar', p); document.getElementById('engineTxt').textContent = Math.round(p*100)+'%'; }
+
+  // Fetch core + wasm (parallel) and the tiny worker source files (parallel)
+  // together — the worker files are a few KB and don't need progress UI.
+  const [[coreBlob, wasmBlob], workerBlobURL] = await withTimeout(
+    Promise.all([
+      Promise.all([
+        fetchWithProgress(`${coreBase}/ffmpeg-core.js`, r=>{parts.core=r; bump();}),
+        fetchWithProgress(`${coreBase}/ffmpeg-core.wasm`, r=>{parts.wasm=r; bump();}),
+      ]),
+      buildInlinedWorkerBlobURL(ffBase),
+    ]),
+    45000,
+    'Engine download'
+  );
+
+  await withTimeout(ffmpeg.load({
+    coreURL: URL.createObjectURL(new Blob([coreBlob], {type:'text/javascript'})),
+    wasmURL: URL.createObjectURL(new Blob([wasmBlob], {type:'application/wasm'})),
+    classWorkerURL: workerBlobURL,
+  }), 20000, 'Engine initialization');
+
+  ffmpegReady = true;
+  setBar('engineBar', 1);
+  document.getElementById('engineTxt').textContent = 'ready';
+  log('   Engine ready', 'good');
+}
+
+let liveProgress = null; // {durationSecs, label, lastLogFrac, lastLogTime}
+function setLiveProgress(durationSecs, label){
+  liveProgress = { durationSecs, label, lastLogFrac: -1, lastLogTime: 0 };
+}
+function clearLiveProgress(){ liveProgress = null; }
+
+async function ffrun(args){ window.__lastFF=''; await ffmpeg.exec(args); return window.__lastFF; }
+function parseDuration(o){ const m=o.match(/Duration:\s*(\d+):(\d+):([\d.]+)/); return m?(+m[1])*3600+(+m[2])*60+parseFloat(m[3]):null; }
+function parseSampleRate(o){ const m=o.match(/(\d+)\s*Hz/); return m?parseInt(m[1]):44100; }
+function parseVolume(o){ const mean=o.match(/mean_volume:\s*(-?[\d.]+)/); const max=o.match(/max_volume:\s*(-?[\d.]+)/); return {mean:mean?parseFloat(mean[1]):null, max:max?parseFloat(max[1]):null}; }
+
+function buildFilterChain(mode, sr, volLinear, noiseReduction){
+  const lowRate = Math.round(sr / PLAYBACK_SPEED);
+  let filters = ['aformat=sample_fmts=fltp'];
+  if(mode === 'concert'){
+    filters.push('alimiter=level_in=1:level_out=1:limit=0.80:attack=0.5:release=30:level=disabled');
+    filters.push('highpass=f=40:poles=2', 'highpass=f=20:poles=1');
+    // One afftdn pass per level, not several chained together. Stacking
+    // multiple full-strength spectral-denoise passes (as this used to do,
+    // up to 3 in a row on "max") is a classic way to create "musical noise" —
+    // a warbly, static-like artifact that's actually introduced by the
+    // over-processing itself, not removed by it.
+    const nrMap = {off:'afftdn=nr=8:nf=-35:nt=w:om=o', light:'afftdn=nr=14:nf=-42:nt=w:om=o', medium:'afftdn=nr=22:nf=-48:nt=w:om=o', strong:'afftdn=nr=30:nf=-52:nt=w:om=o', max:'afftdn=nr=40:nf=-58:nt=w:om=o'};
+    filters.push(nrMap[noiseReduction]);
+    const anlm = {off:0.0003, light:0.0004, medium:0.0010, strong:0.0018, max:0.0034}[noiseReduction];
+    filters.push(`anlmdn=s=${anlm}:p=0.002:r=0.004:m=15`);
+    if(noiseReduction==='medium'||noiseReduction==='strong'||noiseReduction==='max') filters.push('equalizer=f=10000:t=h:w=0.5:g=1.5');
+    // Extra de-hiss high-shelf trim, only on max — takes a bit more off the
+    // very top of the band (above most vocal/instrument content) where
+    // residual hiss/static tends to live after the two afftdn/anlmdn passes.
+    if(noiseReduction==='max') filters.push('equalizer=f=13000:t=h:w=0.7:g=-4');
+    filters.push('lowpass=f=16000:poles=2', 'lowpass=f=15000:poles=2');
+    // Gentler than before, and only when actually asked to reduce noise —
+    // a tight gate on already-denoised audio is prone to audible chatter.
+    if(noiseReduction !== 'off') filters.push('agate=threshold=0.0015:attack=10:release=300:ratio=2:makeup=1');
+    filters.push(`asetrate=${lowRate}`, 'aresample=44100:resampler=swr:filter_size=512:cutoff=0.93:precision=28');
+  } else {
+    filters.push('alimiter=level_in=1:level_out=1:limit=0.95:attack=1:release=50:level=disabled');
+    filters.push('highpass=f=20', 'lowpass=f=16000:poles=2', 'lowpass=f=15000:poles=2');
+    if(noiseReduction !== 'off'){
+      const nrMap = {light:'afftdn=nr=10:nf=-38:nt=w:om=o', medium:'afftdn=nr=16:nf=-44:nt=w:om=o', strong:'afftdn=nr=22:nf=-48:nt=w:om=o', max:'afftdn=nr=32:nf=-55:nt=w:om=o'};
+      filters.push(nrMap[noiseReduction]);
+      const s2 = {light:0.0004, medium:0.0007, strong:0.0012, max:0.0022}[noiseReduction];
+      filters.push(`anlmdn=s=${s2}:p=0.002:r=0.004:m=15`);
+      if(noiseReduction==='max') filters.push('equalizer=f=13000:t=h:w=0.7:g=-4');
+    }
+    filters.push(`asetrate=${lowRate}`, 'aresample=44100:resampler=swr:filter_size=512:cutoff=0.93:precision=28');
+    filters.push('agate=threshold=0.00316:attack=20:release=250:ratio=10:makeup=1');
+  }
+  filters.push(`volume=${volLinear.toFixed(8)}`);
+  filters.push('alimiter=level_in=1:level_out=1:limit=0.891:attack=5:release=50:level=disabled');
+  return filters.join(',');
+}
+function codecArgsFor(fmt){
+  if(fmt==='ogg_hq') return {ext:'ogg', args:['-codec:a','libvorbis','-b:a','384k']};
+  if(fmt==='ogg_std'||fmt==='ogg') return {ext:'ogg', args:['-codec:a','libvorbis','-b:a','256k']};
+  if(fmt==='mp3') return {ext:'mp3', args:['-codec:a','libmp3lame','-q:a','0']};
+  if(fmt==='wav') return {ext:'wav', args:['-codec:a','pcm_s16le']};
+  return {ext:'ogg', args:['-codec:a','libvorbis','-b:a','256k']};
+}
+function extOf(name){ const m=name.match(/\.[^/.]+$/); return m?m[0]:'.dat'; }
+
+// Concatenates already-encoded same-codec parts into a single final file
+// using ffmpeg's concat demuxer (stream copy — no re-encode, so this is fast
+// even for a multi-hour set built out of many small parts).
+async function concatParts(partNames, outName){
+  const listName = 'concat_list_' + Math.random().toString(36).slice(2) + '.txt';
+  const listTxt = partNames.map(n => `file '${n}'`).join('\n') + '\n';
+  await ffmpeg.writeFile(listName, new TextEncoder().encode(listTxt));
+  try{
+    await ffrun(['-y','-f','concat','-safe','0','-i', listName, '-c','copy', outName]);
+  } finally {
+    await ffmpeg.deleteFile(listName).catch(()=>{});
+  }
+}
+
+async function processOne(file, idx, total, opts){
+  const inName = `in_${idx}${extOf(file.name)}`;
+  await ffmpeg.writeFile(inName, await fetchFile(file));
+
+  log(`\n${'='.repeat(40)}`, 'separator');
+  log(`FILE ${idx+1}/${total}: ${file.name}`, 'header');
+  log(`${'='.repeat(40)}`, 'separator');
+  setStatus(`(${idx+1}/${total}) Probing: ${file.name}`);
+  log('Reading file info…', 'header');
+  const probeOut = await ffrun(['-i', inName]);
+  const sr = parseSampleRate(probeOut);
+  const srcDur = parseDuration(probeOut) || 0;
+  log(`   Sample rate: ${sr}Hz — Duration: ${srcDur ? fmtTime(srcDur) : 'unknown'}`, 'info');
+
+  const volLinear = Math.pow(10, opts.volDb/20);
+  const chain = buildFilterChain(opts.mode, sr, volLinear, opts.noise);
+  const {ext, args: codecArgs} = codecArgsFor(opts.fmt);
+  const baseName = file.name.replace(/\.[^/.]+$/, '') + opts.suffix;
+  const outputs = [];
+  const jobStart = performance.now();
+
+  // ---- Pass 1: encode the *whole* file (pitch shift + denoise chain) ----
+  // This must run over the full, continuous source audio in one logical pass
+  // so the noise-reduction filters (afftdn/anlmdn) get full context to learn
+  // the noise floor — cutting the source into short pieces *before* this
+  // filter chain runs is what caused both the wrong-split-points bug and the
+  // background static: each short piece re-started denoising from scratch,
+  // and the piece boundaries were being computed in the wrong time domain
+  // (post-pitch-shift units applied to pre-pitch-shift source seeks).
+  //
+  // For very long sets we still can't safely hold the entire thing in memory
+  // as one ffmpeg invocation, so long source audio gets cut into large (~20
+  // real-world minute) *source-time* safety segments — encoded independently,
+  // then stream-copy concatenated back into one continuous encoded file
+  // before any Roblox-facing splitting happens. 20 minutes is comfortably
+  // long enough for afftdn's adaptive noise floor to converge, so the only
+  // cost is a barely-audible re-convergence blip once every ~20 minutes on
+  // extremely long sets, instead of every few minutes.
+  const SAFETY_SEGMENT_SRC_SECS = 20 * 60;
+  const needsSafetySegments = srcDur > SAFETY_SEGMENT_SRC_SECS * 1.15; // small buffer so a 21-min file isn't split for nothing
+  const numSafetySegs = needsSafetySegments ? Math.ceil(srcDur / SAFETY_SEGMENT_SRC_SECS) : 1;
+
+  if(numSafetySegs > 1){
+    log(`Encoding in ${numSafetySegs} internal piece(s) of ~20 real-world minutes each (source-time, ` +
+      `unrelated to your Roblox chunk-length setting) — keeps memory flat on long sets, then these are ` +
+      `stitched back into one continuous file before any Roblox splitting happens.`, 'header');
+  } else {
+    log('Encoding (pitch shift + noise reduction chain)…', 'header');
+  }
+
+  const encodedParts = [];
+  const failedSafetySegs = [];
+  for(let c = 0; c < numSafetySegs; c++){
+    const start = c * SAFETY_SEGMENT_SRC_SECS;
+    const dur = srcDur ? Math.min(SAFETY_SEGMENT_SRC_SECS, srcDur - start) : undefined;
+    if(srcDur && dur <= 0.05) break;
+    const partName = `${baseName}_enc${c+1}.wav`;
+    const label = numSafetySegs > 1
+      ? `(${idx+1}/${total}) ${file.name} — encoding piece ${c+1}/${numSafetySegs}`
+      : `(${idx+1}/${total}) ${file.name}`;
+    setStatus(label);
+    if(numSafetySegs > 1) log(`\n-- Encoding piece ${c+1}/${numSafetySegs} (source ${fmtTime(start)}${dur?` → ${fmtTime(start+dur)}`:''}) --`, 'header');
+
+    let segOk = false;
+    for(let attempt=0; attempt<2 && !segOk; attempt++){
+      try{
+        const segArgs = ['-y'];
+        if(numSafetySegs > 1) segArgs.push('-ss', start.toFixed(6));
+        segArgs.push('-i', inName);
+        if(numSafetySegs > 1 && dur !== undefined) segArgs.push('-t', dur.toFixed(6));
+        // Lossless intermediate (pcm_f32le WAV), even though the final output
+        // format may be lossy — see the split step below for why.
+        segArgs.push('-af', chain, '-ar', '44100', '-codec:a', 'pcm_f32le', partName);
+
+        setLiveProgress(dur || srcDur, label);
+        const segStartT = performance.now();
+        await ffrun(segArgs);
+        clearLiveProgress();
+        setBar('stageBar', (c+1)/numSafetySegs);
+        log(`   Piece ${c+1}/${numSafetySegs} encoded in ${((performance.now()-segStartT)/1000).toFixed(1)}s`, 'good');
+        encodedParts.push(partName);
+        segOk = true;
+
+        if(numSafetySegs > 1){
+          const elapsed = (performance.now()-jobStart)/1000;
+          const perSeg = elapsed/(c+1);
+          const etaSecs = perSeg*(numSafetySegs-(c+1));
+          log(`   ${c+1}/${numSafetySegs} piece(s) done — est. ${fmtTime(Math.max(0,etaSecs))} remaining`, 'info');
+        }
+      }catch(err){
+        clearLiveProgress();
+        await ffmpeg.deleteFile(partName).catch(()=>{});
+        if(attempt === 0){
+          log(`   Piece ${c+1}/${numSafetySegs} failed: ${err.message} — retrying once before giving up on it.`, 'warning');
+        } else {
+          log(`   Piece ${c+1}/${numSafetySegs} failed again: ${err.message} — skipping and continuing.`, 'critical');
+          failedSafetySegs.push(c+1);
+        }
+      }
+    }
+  }
+
+  if(encodedParts.length === 0){
+    log(`   Nothing encoded for ${file.name} — every piece failed.`, 'critical');
+    await ffmpeg.deleteFile(inName).catch(()=>{});
+    return outputs;
+  }
+
+  const fullEncodedName = `${baseName}_full.wav`;
+  if(encodedParts.length === 1){
+    await ffmpeg.rename(encodedParts[0], fullEncodedName);
+  } else {
+    log(`Stitching ${encodedParts.length} encoded piece(s) into one continuous file…`, 'header');
+    await concatParts(encodedParts, fullEncodedName);
+    for(const p of encodedParts) await ffmpeg.deleteFile(p).catch(()=>{});
+  }
+  await ffmpeg.deleteFile(inName).catch(()=>{});
+
+  const fullDurOut = await ffrun(['-i', fullEncodedName]);
+  const fullDur = parseDuration(fullDurOut) || 0;
+  log(`   Duration on disk: ${fmtTime(fullDur)} (plays as ${fmtTime(fullDur*PLAYBACK_SPEED)} in Roblox)`, 'info');
+
+  // Full-file volumedetect means a second full decode pass over the whole
+  // set purely for a peak-level readout — on a multi-hour concert set that
+  // doubles processing time for a QC number nobody's blocked on. Past a
+  // threshold, sample a leading window instead; well under that, still scan
+  // the whole thing since it costs nothing extra on short files.
+  const QC_FULL_SCAN_LIMIT_SECS = 25 * 60;
+  const qcArgs = fullDur > QC_FULL_SCAN_LIMIT_SECS
+    ? ['-t', String(QC_FULL_SCAN_LIMIT_SECS), '-i', fullEncodedName, '-af', 'volumedetect', '-f','null','-']
+    : ['-i', fullEncodedName, '-af', 'volumedetect', '-f','null','-'];
+  const qcOut = await ffrun(qcArgs);
+  const vol = parseVolume(qcOut);
+  if(vol.max !== null){
+    log(`   Peak${fullDur > QC_FULL_SCAN_LIMIT_SECS ? ` (sampled from first ${fmtTime(QC_FULL_SCAN_LIMIT_SECS)})` : ''}: ${vol.max.toFixed(1)} dBFS`, 'info');
+    log(vol.max > -0.5 ? '   Hot — close to clipping' : '   Healthy peak level', vol.max > -0.5 ? 'warning' : 'good');
+  }
+
+  // ---- Pass 2: Roblox-facing split, done on the *lossless* WAV, in its own
+  // (post-pitch-shift) time domain — correct domain for chunkSecs math.
+  // Each chunk is freshly encoded to the target codec from lossless PCM here
+  // (not stream-copied out of an already-lossy file) — cutting an MP3/OGG
+  // stream and handing the pieces to two separate Sound instances leaves a
+  // small gap/click at the seam from that codec's own encoder priming and
+  // padding samples. Encoding fresh from PCM at the exact cut point avoids
+  // that, so back-to-back chunks transition cleanly in Studio.
+  if(opts.split){
+    const chunkSecs = (opts.splitMin*60) / PLAYBACK_SPEED;
+    const numChunks = Math.max(1, Math.ceil(fullDur / chunkSecs));
+    log(`Splitting into ${numChunks} chunk(s) of ${opts.splitMin} min (Roblox time) each…`, 'header');
+    for(let c=0;c<numChunks;c++){
+      const start = c*chunkSecs;
+      const dur = Math.min(chunkSecs, fullDur - start);
+      if(dur <= 0.05) break;
+      const outName = `${baseName}_part${c+1}.${ext}`;
+      await ffrun(['-y','-ss', start.toFixed(6), '-i', fullEncodedName, '-t', dur.toFixed(6), ...codecArgs, outName]);
+      const data = await ffmpeg.readFile(outName);
+      outputs.push({name: outName, blob: new Blob([data.buffer], {type:'audio/'+ext})});
+      log(`   ${outName} ✓ (${fmtTime(dur)} on disk → ${fmtTime(dur*PLAYBACK_SPEED)} in Roblox)`, 'good');
+      if(opts.autoUpload) queueAutoUpload(outputs[outputs.length-1]);
+      await ffmpeg.deleteFile(outName).catch(()=>{});
+    }
+    await ffmpeg.deleteFile(fullEncodedName).catch(()=>{});
+  } else {
+    const outName = `${baseName}.${ext}`;
+    await ffrun(['-y','-i', fullEncodedName, ...codecArgs, outName]);
+    const data = await ffmpeg.readFile(outName);
+    outputs.push({name: outName, blob: new Blob([data.buffer], {type:'audio/'+ext})});
+    log(`   ${outName} ✓`, 'good');
+    if(opts.autoUpload) queueAutoUpload(outputs[outputs.length-1]);
+    await ffmpeg.deleteFile(outName).catch(()=>{});
+    await ffmpeg.deleteFile(fullEncodedName).catch(()=>{});
+  }
+
+  setBar('fileBar', (idx+1)/total);
+  const totalTook = (performance.now()-jobStart)/1000;
+  log(`${file.name} -> ${outputs.length} file(s) in ${totalTook.toFixed(1)}s` +
+    (failedSafetySegs.length ? ` (${failedSafetySegs.length} internal piece(s) failed — see above)` : ''),
+    failedSafetySegs.length ? 'warning' : 'good');
+  return outputs;
+}
+
+
+function uploadStateLabel(o){
+  if(o.assetId) return 'uploaded ✓';
+  if(o.uploadState === 'uploading') return 'uploading…';
+  if(o.uploadState === 'failed') return 'failed';
+  return '';
+}
+
+function renderOutputs(){
+  const list = document.getElementById('outputsList');
+  const empty = document.getElementById('outputsEmpty');
+  const zipBtn = document.getElementById('zipBtn');
+  const uploadAllBtn = document.getElementById('uploadAllBtn');
+  list.innerHTML = '';
+  const showBuildBlock = document.getElementById('showBuildBlock');
+  const buildShowBtn = document.getElementById('buildShowBtn');
+  if(outputBlobs.length===0){ empty.style.display='block'; zipBtn.style.display='none'; uploadAllBtn.style.display='none'; showBuildBlock.style.display='none'; buildShowBtn.style.display='none'; document.getElementById('bulkRenameBlock').style.display='none'; return; }
+  empty.style.display='none';
+  zipBtn.style.display='block';
+  uploadAllBtn.style.display='block';
+  showBuildBlock.style.display='block';
+  buildShowBtn.style.display='block';
+  document.getElementById('bulkRenameBlock').style.display='block';
+  outputBlobs.forEach((o, i)=>{
+    const url = URL.createObjectURL(o.blob);
+    const div = document.createElement('div');
+    div.className='outfile';
+    div.innerHTML = `<span class="name">${o.name}</span>
+      <span class="assetid mono" id="assetid-${i}">${o.assetId ? o.assetId : ''}</span>
+      <span class="upload-status ${o.uploadState||''}" id="uploadstate-${i}">${uploadStateLabel(o)}</span>
+      <a class="btn-sm" href="${url}" download="${o.name}">Download</a>
+      <button class="btn-sm" data-i="${i}" data-action="rename">Rename</button>
+      <button class="btn-sm" data-i="${i}" data-action="upload">${o.assetId ? 'Re-upload' : 'Upload to Roblox'}</button>
+      <input class="btn-sm mono" style="width:130px;" data-i="${i}" data-action="pasteid" placeholder="or paste asset ID" value="">
+      <button class="btn-sm" data-i="${i}" data-action="savepasteid">Use ID</button>`;
+    list.appendChild(div);
+  });
+  list.querySelectorAll('[data-action="upload"]').forEach(btn=>{
+    btn.addEventListener('click', ()=> uploadOne(parseInt(btn.dataset.i)));
+  });
+  list.querySelectorAll('[data-action="rename"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = parseInt(btn.dataset.i);
+      const cur = outputBlobs[i].name;
+      const ext = extOf(cur);
+      const curBase = cur.slice(0, cur.length - ext.length);
+      const next = prompt('New file name (extension kept automatically):', curBase);
+      if(next === null) return;
+      const trimmed = next.trim();
+      if(!trimmed) return;
+      renameOutput(i, trimmed.replace(/\.[^/.]+$/,'') + ext);
+    });
+  });
+  list.querySelectorAll('[data-action="savepasteid"]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = parseInt(btn.dataset.i);
+      const input = list.querySelector(`[data-action="pasteid"][data-i="${i}"]`);
+      const raw = input.value.trim().replace(/^rbxassetid:\/\//,'').replace(/\D/g,'');
+      if(!raw){ alert('Paste a numeric Roblox asset ID (or an rbxassetid:// URL).'); return; }
+      outputBlobs[i].assetId = raw;
+      log(`   Asset ID set manually for ${outputBlobs[i].name}: ${raw}`, 'good');
+      renderOutputs();
+    });
+  });
+}
+
+function renameOutput(i, newName){
+  const old = outputBlobs[i].name;
+  if(old === newName) return;
+  outputBlobs[i].name = newName;
+  log(`   Renamed "${old}" → "${newName}"`, 'good');
+  if(window.addHistory) window.addHistory('rename', `Renamed <b>${old}</b> → <b>${newName}</b>`);
+  renderOutputs();
+}
+
+document.getElementById('bulkRenameBtn').addEventListener('click', ()=>{
+  const base = document.getElementById('bulkRenameInp').value.trim();
+  if(!base){ alert('Type a base name first.'); return; }
+  if(outputBlobs.length === 0) return;
+  const pad = outputBlobs.length > 9 ? 2 : 1;
+  outputBlobs.forEach((o, i)=>{
+    const ext = extOf(o.name);
+    o.name = `${base} ${String(i+1).padStart(pad,'0')}${ext}`;
+  });
+  log(`   Renamed all ${outputBlobs.length} file(s) to "${base} #"…`, 'good');
+  if(window.addHistory) window.addHistory('rename', `Bulk-renamed ${outputBlobs.length} file(s) to "<b>${base} #</b>" pattern`);
+  renderOutputs();
+});
+
+// ---------- Roblox upload: retries, timeout, and a non-blocking background
+// queue so "auto-upload as chunks finish" doesn't stall audio processing ----
+const UPLOAD_TIMEOUT_MS = 120000;
+const UPLOAD_MAX_RETRIES = 2;
+
+function resetUploadCounters(){
+  autoUploadTotal = 0; autoUploadDone = 0;
+  document.getElementById('uploadBarWrap').style.display = 'none';
+  setBar('uploadBar', 0);
+  document.getElementById('uploadProgTxt').textContent = '0 / 0';
+}
+function bumpUploadCounters(){
+  document.getElementById('uploadBarWrap').style.display = 'block';
+  document.getElementById('uploadProgTxt').textContent = `${autoUploadDone} / ${autoUploadTotal}`;
+  setBar('uploadBar', autoUploadTotal ? autoUploadDone/autoUploadTotal : 0);
+}
+let autoUploadTotal = 0, autoUploadDone = 0;
+let uploadQueueTail = Promise.resolve();
+
+// Queues an upload to run after any already-queued ones finish, so uploads
+// for earlier chunks don't get stampeded by later ones, while letting ffmpeg
+// keep processing the next segment in the meantime.
+function queueAutoUpload(o){
+  autoUploadTotal++; bumpUploadCounters();
+  uploadQueueTail = uploadQueueTail
+    .then(()=> uploadObj(o, {silent:true}))
+    .catch(()=>{ /* already logged inside uploadObj */ })
+    .then(()=>{ autoUploadDone++; bumpUploadCounters(); });
+}
+
+async function uploadObj(o, {silent=false}={}){
+  o.uploadState = 'uploading';
+  renderOutputs();
+  log(`Uploading ${o.name} to Roblox…`, 'header');
+
+  for(let attempt=0; attempt<=UPLOAD_MAX_RETRIES; attempt++){
+    const controller = new AbortController();
+    const timer = setTimeout(()=> controller.abort(), UPLOAD_TIMEOUT_MS);
+    try{
+      const form = new FormData();
+      form.append('audio', o.blob, o.name);
+      form.append('displayName', o.name.replace(/\.[^/.]+$/, ''));
+      // No credentials attached here — the server reads the connected
+      // Roblox account from this browser's session cookie (Settings ->
+      // Connect with Roblox), or falls back to a shared server-side key.
+
+      const res = await fetch('/api/roblox/upload', { method:'POST', body: form, signal: controller.signal, credentials: 'same-origin' });
+      const raw = await res.text();
+      let data;
+      try{ data = JSON.parse(raw); }
+      catch{
+        const looksLikeSizeLimit = /entity too large|payload too large|413/i.test(raw);
+        throw new Error(
+          looksLikeSizeLimit
+            ? `Server rejected the file as too large (host body-size limit, not a Roblox error). Lower "Target length per chunk" in the Process tab, or deploy via Railway/server.js instead of Vercel serverless, which doesn't have this cap.`
+            : `Server returned a non-JSON error (${res.status}): ${raw.slice(0,200)}`
+        );
+      }
+      if(!res.ok || data.error) throw new Error(data.error || `Upload failed (${res.status})`);
+      o.assetId = data.assetId;
+      o.uploadState = 'done';
+      log(`   Asset ID: ${data.assetId} (rbxassetid://${data.assetId})`, 'good');
+      if(window.addHistory) window.addHistory('upload', `Uploaded <b>${o.name}</b> → asset ${data.assetId}`);
+      renderOutputs();
+      return;
+    }catch(err){
+      const isAbort = err.name === 'AbortError';
+      const msg = isAbort ? `timed out after ${UPLOAD_TIMEOUT_MS/1000}s` : err.message;
+      if(attempt < UPLOAD_MAX_RETRIES){
+        log(`   Upload attempt ${attempt+1}/${UPLOAD_MAX_RETRIES+1} for ${o.name} failed (${msg}) — retrying…`, 'warning');
+        await new Promise(r=> setTimeout(r, 1500*(attempt+1)));
+      } else {
+        o.uploadState = 'failed';
+        log(`   Upload failed for ${o.name} after ${UPLOAD_MAX_RETRIES+1} attempt(s): ${msg}`, 'critical');
+        if(!silent) alert('Upload failed: ' + msg);
+        renderOutputs();
+        throw err;
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function uploadOne(i){
+  try{ await uploadObj(outputBlobs[i], {silent:false}); } catch(e){ /* already logged */ }
+}
+
+(async function initSlotCapNote(){
+  try{
+    const resp = await fetch('/roblox/XrAudioSystem.rbxm');
+    if(!resp.ok) return;
+    const buf = new Uint8Array(await resp.arrayBuffer());
+    const parsed = RbxmPatcher.parseFile(buf);
+    const count = RbxmPatcher.findAllInstances(parsed, 'Sound').length;
+    const el = document.getElementById('slotCapNote');
+    if(el) el.textContent = String(count);
+  }catch(e){ /* leave the fallback wording in place */ }
+})();
+
+document.getElementById('permGrantBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('permGrantBtn');
+  const note = document.getElementById('permGrantNote');
+  const resultsEl = document.getElementById('permGrantResults');
+  const nameInp = document.getElementById('permGrantNameInp');
+  const username = nameInp.value.trim();
+
+  if(!username){ note.textContent = 'Type a Roblox username first.'; return; }
+  const assetIds = outputBlobs.filter(o=>o.assetId).map(o=>o.assetId);
+  if(assetIds.length === 0){ note.textContent = 'No uploaded tracks yet — upload at least one first.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Granting…';
+  note.textContent = '';
+  try{
+    const res = await fetch('/api/roblox/grant-permission', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'same-origin',
+      body: JSON.stringify({ usernames: [username], assetIds }),
+    });
+    const data = await res.json();
+    if(!res.ok){ note.textContent = data.error || 'Grant failed.'; btn.disabled = false; btn.textContent = 'Grant Access to All Uploaded Tracks'; return; }
+
+    const r = data.results[username];
+    if(!r || !r.ok){
+      note.textContent = `Failed for ${username}: ${(r && r.error) || 'unknown error'}`;
+    } else {
+      const granted = r.grantedAssetIds || [];
+      const failed = (r.errors || []).length;
+      note.textContent = `Granted ${r.resolvedName || username} access to ${granted.length}/${assetIds.length} track(s)` +
+        (failed ? ` (${failed} failed — they may already have access, or aren't audio-permissioned assets).` : ' ✓');
+      if(window.addHistory) window.addHistory('permission', `Granted <b>${r.resolvedName || username}</b> Roblox "Use" permission on ${granted.length} audio asset(s)`);
+    }
+    resultsEl.innerHTML = `<div style="font-size:0.8rem; color:var(--text-dim);">${username}: ${r && r.ok ? 'granted' : 'failed'}</div>`;
+  }catch(err){
+    note.textContent = `Request failed: ${err.message}`;
+  }
+  btn.disabled = false; btn.textContent = 'Grant Access to All Uploaded Tracks';
+});
+
+document.getElementById('goAssetSettingsBtn').addEventListener('click', ()=> goToTab('assets'));
+
+document.getElementById('uploadAllBtn').addEventListener('click', async ()=>{
+  const pending = outputBlobs.filter(o=>!o.assetId);
+  resetUploadCounters();
+  autoUploadTotal = pending.length; bumpUploadCounters();
+  for(const o of pending){
+    try{ await uploadObj(o, {silent:true}); }catch(e){ /* logged inside */ }
+    autoUploadDone++; bumpUploadCounters();
+  }
+  const ids = outputBlobs.filter(o=>o.assetId).map(o=>`"rbxassetid://${o.assetId}", -- ${o.name}`).join('\n');
+  if(ids){ log('\nAsset IDs (paste into the Roblox player TRACKS table):\n'+ids, 'header'); }
+  const failed = outputBlobs.filter(o=>o.uploadState==='failed').length;
+  if(failed) log(`\n${failed} chunk(s) failed to upload — click "Re-upload" on those rows to retry individually.`, 'warning');
+});
+
+function sanitizeInstanceName(s){
+  return s.replace(/[^\w \-\.]/g, '').trim().slice(0, 50) || 'Track';
+}
+function xmlEscapeShow(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function buildShowRbxmx(showName, tracks){
+  // tracks: [{name, assetId}], written in this order — Studio preserves file order
+  // as insertion order, which is what the AudioServer script falls back to sorting
+  // stably by when Tracknumber isn't set on a track.
+  const soundItems = tracks.map((t, i)=>{
+    const num = String(i+1).padStart(2,'0');
+    const nm = xmlEscapeShow(`${num}_${sanitizeInstanceName(t.name.replace(/\.[^/.]+$/,''))}`);
+    return `    <Item class="Sound" referent="RBX-Sound-${i}">\n` +
+      `      <Properties>\n` +
+      `        <string name="Name">${nm}</string>\n` +
+      `        <string name="SoundId">rbxassetid://${t.assetId}</string>\n` +
+      `        <bool name="Looped">false</bool>\n` +
+      `        <float name="Volume">1</float>\n` +
+      `      </Properties>\n` +
+      `    </Item>`;
+  }).join('\n');
+  return `<roblox xmlns:xmlne="http://www.roblox.com/roblox.1.dtd" version="4">\n` +
+    `  <Item class="Folder" referent="RBX-Show">\n` +
+    `    <Properties>\n` +
+    `      <string name="Name">${xmlEscapeShow(showName)}</string>\n` +
+    `    </Properties>\n` +
+    soundItems + `\n` +
+    `  </Item>\n` +
+    `</roblox>\n`;
+}
+
+document.getElementById('buildShowBtn').addEventListener('click', async ()=>{
+  const showBuildNote = document.getElementById('showBuildNote');
+  const showName = document.getElementById('showNameInp').value.trim();
+  if(!showName){ alert('Give the show a name first.'); return; }
+  if(outputBlobs.length === 0){ alert('Process some audio first.'); return; }
+
+  const btn = document.getElementById('buildShowBtn');
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  const pending = outputBlobs.filter(o=>!o.assetId);
+  resetUploadCounters();
+  autoUploadTotal = pending.length; bumpUploadCounters();
+  for(const o of pending){
+    try{ await uploadObj(o, {silent:true}); }catch(e){ /* logged inside */ }
+    autoUploadDone++; bumpUploadCounters();
+  }
+  const withIds = outputBlobs.filter(o=>o.assetId);
+  const missing = outputBlobs.length - withIds.length;
+  if(withIds.length === 0){
+    btn.disabled = false; btn.textContent = 'Upload All & Build Show';
+    alert('No tracks uploaded successfully — nothing to build.');
+    return;
+  }
+
+  btn.textContent = 'Building show…';
+  const xml = buildShowRbxmx(showName, withIds);
+  const blob = new Blob([xml], {type:'text/xml'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${sanitizeInstanceName(showName)}.rbxmx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+
+  log(`\nBuilt show "${showName}" with ${withIds.length} track(s)${missing? ` (${missing} failed to upload — skipped)`:''}.`, 'header');
+  showBuildNote.textContent = `Downloaded "${showName}.rbxmx" with ${withIds.length} track${withIds.length===1?'':'s'} ✓ — ` +
+    `tracks preload/play in this file's order; open each Sound's Attributes in Studio to set a Tracknumber if you want to reorder later.`;
+  if(window.addHistory) window.addHistory('build', `Built show <b>${showName}.rbxmx</b> with ${withIds.length} track(s)`);
+  btn.disabled = false; btn.textContent = 'Upload All & Build Show';
+});
+
+// ---------- Build & Download Updated XrAudioSystem.rbxm (in-place patch) ----------
+function sanitizeTrackLabel(i, name){
+  const clean = (name || 'Track').replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 40) || 'Track';
+  return `${String(i + 1).padStart(2, '0')}_${clean}`;
+}
+
+const OLD_SORT_SNIPPET = 'table.sort(tracks, function(a, b)\n\t\treturn (a:GetAttribute("Tracknumber") or 0) < (b:GetAttribute("Tracknumber") or 0)\n\tend)';
+const NEW_SORT_SNIPPET = 'table.sort(tracks, function(a, b)\n\t\tlocal an, bn = a:GetAttribute("Tracknumber"), b:GetAttribute("Tracknumber")\n\t\tif an or bn then return (an or 0) < (bn or 0) end\n\t\treturn a.Name < b.Name -- fallback: alphabetical (zero-padded names sort correctly)\n\tend)';
+function fixServerSource(src){
+  // Skip empty-SoundId slots entirely so unused template slots never enter the
+  // preload/schedule loop (previously: a 30s TimeLength wait per unused slot).
+  let out = src.replace(
+    'if child:IsA("Sound") then\n\t\t\ttable.insert(tracks, child)\n\t\tend',
+    'if child:IsA("Sound") and child.SoundId ~= "" then\n\t\t\ttable.insert(tracks, child)\n\t\tend'
+  );
+  if(out.includes(OLD_SORT_SNIPPET)) out = out.replace(OLD_SORT_SNIPPET, NEW_SORT_SNIPPET);
+  return out;
+}
+
+// Safe, conservative Lua "minifier": strips full-line and trailing `--` comments
+// and blank lines only. Does not rename locals (too easy to break with a naive
+// regex — e.g. inside strings), so this is genuine minification, not obfuscation.
+function minifyLua(src){
+  return src
+    .split('\n')
+    .map(line => {
+      // don't touch lines that contain a string literal with -- inside it (rough heuristic)
+      if(/["'].*--.*["']/.test(line)) return line;
+      return line.replace(/\s*--(?!\[).*$/, '');
+    })
+    .filter(line => line.trim().length > 0)
+    .join('\n');
+}
+
+document.getElementById('buildRbxmBtn').addEventListener('click', async () => {
+  const note = document.getElementById('buildRbxmNote');
+  const btn = document.getElementById('buildRbxmBtn');
+  const showName = document.getElementById('showNameInp').value.trim();
+  if(!showName){ alert('Give the show a name first (in the Show panel above).'); return; }
+
+  btn.disabled = true; btn.textContent = 'Building…';
+  try{
+    const resp = await fetch('/roblox/XrAudioSystem.rbxm');
+    if(!resp.ok) throw new Error(`Couldn't load the base template (${resp.status})`);
+    const buf = new Uint8Array(await resp.arrayBuffer());
+    const parsed = RbxmPatcher.parseFile(buf);
+    const overrides = new Map();
+
+    // 1. Rename the show folder (the one Folder that isn't XrAudio/Shows)
+    const folders = RbxmPatcher.findAllInstances(parsed, 'Folder');
+    const showFolder = folders.find(f => f.name !== 'XrAudio' && f.name !== 'Shows');
+    if(showFolder){
+      const idx = RbxmPatcher.findPropChunkIndex(parsed, 'Folder', 'Name');
+      overrides.set(idx, RbxmPatcher.patchStringProp(parsed.chunks[idx], showFolder.index, showName));
+    }
+
+    // 2. Fill Sound slots from this session's uploaded tracks (blank out unused slots)
+    const sounds = RbxmPatcher.findAllInstances(parsed, 'Sound');
+    const tracks = outputBlobs.filter(o => o.assetId);
+    const nameIdx = RbxmPatcher.findPropChunkIndex(parsed, 'Sound', 'Name');
+    const idIdx = RbxmPatcher.findPropChunkIndex(parsed, 'Sound', 'SoundId');
+    if(tracks.length > sounds.length){
+      throw new Error(`This template has ${sounds.length} track slots; you have ${tracks.length} uploaded. ` +
+        `The template's Sound slots are pre-built in Studio and can't be created on the fly from here without ` +
+        `risking a corrupted file, so trim the set to ${sounds.length} tracks, split into more than one show, ` +
+        `or send a version of XrAudioSystem.rbxm with more Sound slots duplicated in Studio and it'll be picked ` +
+        `up automatically (the count above is read from the file, never hard-coded).`);
+    }
+    const names = RbxmPatcher.readStringPropValues(parsed.chunks[nameIdx]);
+    const ids = RbxmPatcher.readStringPropValues(parsed.chunks[idIdx]);
+    sounds.forEach((slot, i) => {
+      const t = tracks[i];
+      names[slot.index] = t ? sanitizeTrackLabel(i, t.name) : `_unused_${i + 1}`;
+      ids[slot.index] = t ? `rbxassetid://${t.assetId}` : '';
+    });
+    overrides.set(nameIdx, RbxmPatcher.writeStringPropAll(parsed.chunks[nameIdx], names));
+    overrides.set(idIdx, RbxmPatcher.writeStringPropAll(parsed.chunks[idIdx], ids));
+
+    // 3. Bake in the whitelist
+    const wlIdx = RbxmPatcher.findPropChunkIndex(parsed, 'ModuleScript', 'Source');
+    const wlNames = JSON.parse(localStorage.getItem('xr_whitelist_usernames') || '[]');
+    const wlSource = 'local Whitelist = {\n' + wlNames.map(n => `\t"${n}",`).join('\n') +
+      (wlNames.length ? '\n' : '') + '}\n\nreturn Whitelist\n';
+    overrides.set(wlIdx, RbxmPatcher.patchStringProp(parsed.chunks[wlIdx], 0, wlSource));
+
+    // 4. Fix Server's track-collection bug + optional minify (Server/Commands/AudioClient only)
+    const obfuscate = document.getElementById('obfuscateChk').checked;
+    const scriptSrcIdx = RbxmPatcher.findPropChunkIndex(parsed, 'Script', 'Source');
+    const scripts = RbxmPatcher.findAllInstances(parsed, 'Script');
+    const scriptValues = RbxmPatcher.readStringPropValues(parsed.chunks[scriptSrcIdx]);
+    scripts.forEach(s => {
+      let v = scriptValues[s.index];
+      if(s.name === 'Server') v = fixServerSource(v);
+      if(obfuscate) v = minifyLua(v);
+      scriptValues[s.index] = v;
+    });
+    overrides.set(scriptSrcIdx, RbxmPatcher.writeStringPropAll(parsed.chunks[scriptSrcIdx], scriptValues));
+
+    if(obfuscate){
+      const localScripts = RbxmPatcher.findAllInstances(parsed, 'LocalScript');
+      if(localScripts.length){
+        const lsIdx = RbxmPatcher.findPropChunkIndex(parsed, 'LocalScript', 'Source');
+        const lsValues = RbxmPatcher.readStringPropValues(parsed.chunks[lsIdx]);
+        localScripts.forEach(s => { lsValues[s.index] = minifyLua(lsValues[s.index]); });
+        overrides.set(lsIdx, RbxmPatcher.writeStringPropAll(parsed.chunks[lsIdx], lsValues));
+      }
+    }
+
+    const rebuilt = RbxmPatcher.rebuildFile(parsed, overrides);
+
+    // Sanity check before handing it to the user: re-parse our own output.
+    RbxmPatcher.parseFile(rebuilt);
+
+    const blob = new Blob([rebuilt], {type: 'application/octet-stream'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'XrAudioSystem.rbxm';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    note.textContent = `Built "${showName}" with ${tracks.length} track${tracks.length===1?'':'s'} and ` +
+      `${wlNames.length} whitelisted user${wlNames.length===1?'':'s'} ✓ — insert this .rbxm the same way as ` +
+      `before (right-click a service → Insert from File).`;
+    if(window.addHistory) window.addHistory('build', `Built <b>${showName}.rbxm</b> with ${tracks.length} track(s) and ${wlNames.length} whitelisted user(s)`);
+  } catch(err){
+    note.textContent = `Build failed: ${err.message}`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Build & Download Updated XrAudioSystem.rbxm';
+  }
+});
+
+document.getElementById('zipBtn').addEventListener('click', async ()=>{
+  const JSZip = (await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm')).default;
+  const zip = new JSZip();
+  outputBlobs.forEach(o=> zip.file(o.name, o.blob));
+  const blob = await zip.generateAsync({type:'blob'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'processed_audio.zip'; a.click();
+});
+
+document.getElementById('processBtn').addEventListener('click', async ()=>{
+  if(files.length===0){ alert('Add at least one audio file first.'); return; }
+  const btn = document.getElementById('processBtn');
+  btn.disabled = true; btn.textContent = 'Processing…';
+  outputBlobs = [];
+  document.getElementById('consoleLog').innerHTML='';
+  renderOutputs();
+
+  resetUploadCounters();
+  let failedFiles = 0;
+  try{
+    await ensureEngine();
+    const opts = {
+      mode,
+      volDb: parseFloat(document.getElementById('volSel').value),
+      noise: 'max', // static/noise removal is always on at max strength now — no user-facing dial
+      fmt: document.getElementById('fmtSel').value,
+      suffix: document.getElementById('suffixInp').value,
+      split: splitOn,
+      splitMin: parseFloat(document.getElementById('splitMin').value),
+      autoUpload: autoUploadOn,
+    };
+    if(opts.autoUpload) log('Auto-upload is on — each chunk will be sent to Roblox in the background as soon as it finishes processing.', 'header');
+    for(let i=0;i<files.length;i++){
+      document.getElementById('fileProgTxt').textContent = `${i}/${files.length}`;
+      setBar('fileBar', i/files.length);
+      // A single problem file (corrupt audio, unsupported codec, etc.) no
+      // longer aborts the whole batch — it's logged and the rest continue.
+      try{
+        const outs = await processOne(files[i], i, files.length, opts);
+        outputBlobs.push(...outs);
+        renderOutputs();
+      }catch(err){
+        failedFiles++;
+        console.error(err);
+        log(`FILE FAILED: ${files[i].name}: ${err.message}`, 'critical');
+      }
+    }
+    document.getElementById('fileProgTxt').textContent = `${files.length}/${files.length}`;
+    setBar('fileBar', 1);
+    if(opts.autoUpload){
+      log('Waiting for any remaining background uploads to finish…', 'header');
+      await uploadQueueTail.catch(()=>{});
+    }
+    setStatus(`Done — ${files.length} file(s) -> ${outputBlobs.length} chunk(s)` + (failedFiles ? ` (${failedFiles} file(s) failed — see log)` : ''));
+    if(window.addHistory) window.addHistory('process', `Processed ${files.length} file(s) → ${outputBlobs.length} chunk(s)${failedFiles ? ` (${failedFiles} failed)` : ''} <span class="mono" style="color:var(--text-faint);">[${mode}]</span>`);
+  }catch(err){
+    console.error(err);
+    log('ERROR: ' + err.message, 'critical');
+    setStatus('Failed — see log for details.');
+  }
+  btn.disabled = false; btn.textContent = 'Process Files';
+});
+</script>
+</body>
+</html>

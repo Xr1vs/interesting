@@ -1,0 +1,359 @@
+# Audio Prep Console
+
+A browser-based tool for prepping audio for Roblox: pitch-shifts audio down,
+runs it through a noise-reduction / limiter chain, splits it into timed
+chunks, and can optionally upload the results straight to Roblox and hand
+you back the asset IDs.
+
+All audio processing runs client-side in the browser via `ffmpeg-wasm` —
+your files never leave your device unless you explicitly click "Upload to
+Roblox." The small server (`server.js` / `api/roblox/upload.js`) only
+exists to relay that one upload request to Roblox's Open Cloud API, since
+Roblox's API can't be called directly from a browser.
+
+## Before you deploy
+
+**1. Set your own password.**
+The lock screen checks a SHA-256 hash, not a plaintext password. Open
+`index.html`, find `CONFIG.passwordHash` near the top of the `<script>`
+block, and replace it with the hash of your own password. Generate one
+in any browser console:
+
+```js
+crypto.subtle.digest('SHA-256', new TextEncoder().encode('yourpassword'))
+  .then(b => console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
+```
+
+The default password is `changeme` — don't ship that.
+
+This is a simple front-door lock (keeps casual visitors out), not real
+access control. If you need stronger protection, also enable your host's
+own auth — e.g. Vercel's built-in password protection.
+
+**2. Set up a Roblox OAuth 2.0 app** (only needed for uploads).
+Go to `create.roblox.com/credentials` → **OAuth 2.0 Apps** → create an app.
+Under **Permissions**, select the `asset:read` and `asset:write` scopes.
+Under **Redirect URIs**, add:
+- `https://<your-production-domain>/api/roblox/oauth-callback`
+- `http://localhost:3000/api/roblox/oauth-callback` (for local testing)
+
+Then set these as environment variables on your host (Vercel → Project →
+Settings → Environment Variables; Railway → Variables; or a local `.env`
+for `node server.js`) — **never** paste them into `index.html` or any file
+that ships to the browser:
+
+- `ROBLOX_CLIENT_ID`
+- `ROBLOX_CLIENT_SECRET`
+- `APP_BASE_URL` — your deployed URL, e.g. `https://your-app.vercel.app`
+  (falls back to the request's own Host header if unset, but setting it
+  explicitly avoids mismatches behind proxies/custom domains)
+
+For refresh tokens to survive across visits/deploys (recommended), also add
+a free [Upstash Redis](https://upstash.com) database and set:
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+
+Without Upstash configured, sessions fall back to a local JSON file, which
+works for `node server.js` but won't persist reliably on Vercel's stateless
+serverless functions — people would need to reconnect periodically.
+
+Each person then clicks **"Link Account"** in the top right of the app,
+signs in and approves the two scopes on Roblox's own consent screen, and
+uploads happen under their own account from then on — nothing to paste,
+copy, or manage by hand. Once linked, their Roblox avatar and username
+replace the button.
+
+If you'd rather have everyone share one account instead of connecting
+individually, you can still set `ROBLOX_API_KEY` / `ROBLOX_CREATOR_TYPE` /
+`ROBLOX_CREATOR_ID` (an Open Cloud API key, see below) as a fallback — the
+app uses it automatically for anyone who hasn't connected their own account.
+
+## Troubleshooting uploads
+
+**"Roblox connection failed" / "Redirect URI is invalid for this
+application" after clicking Link Account** — the Redirect URI registered on
+the OAuth app doesn't exactly match what this deployment is sending. Visit
+`https://<your-domain>/api/roblox/oauth-login?debug=1` — it returns the
+exact `redirectUri` string this deployment builds (from `APP_BASE_URL` if
+set, otherwise the request's Host header) without starting the OAuth flow.
+Copy that value verbatim into **Redirect URIs** on
+`create.roblox.com/dashboard/credentials` → your app → **OAuth 2.0**. Common
+mismatches: `http://` vs `https://`, a trailing slash, `www.` present on one
+side but not the other, or `APP_BASE_URL` still pointing at an old domain
+after a redeploy/custom-domain change. It must match **character for
+character**.
+
+**Uploads fail with 401 after connecting** — your connection may have been
+revoked (check `roblox.com` → Account Settings → Security → your app's
+access) or the OAuth app's scopes don't include `asset:write`. Disconnect
+(from the avatar menu, top right) and reconnect.
+
+**"Upload failed: Roblox upload failed (401)"** *(only relevant if you're
+using the legacy shared-API-key fallback, not OAuth)* — almost always the
+key's **Restrict by IP** setting on `create.roblox.com/credentials`. Vercel
+and Railway don't have a fixed outbound IP, so a key locked to a specific IP
+will 401 in production even though it works fine when you test from your own
+machine. Set it to **Any IP**, and double check the key has **Assets ·
+Write** and that Creator Type/ID matches the user or group the key belongs
+to.
+
+**"Upload failed: Unexpected token 'R', "Request En"... is not valid JSON"**
+— this was a real bug (fixed): Vercel's serverless functions hard-cap request
+bodies around **4.5MB**, and reject anything bigger before your code even
+runs, with a plain-text `Request Entity Too Large` body instead of JSON. Long
+concert-set chunks routinely blow past that. The app now:
+- shows a live **estimated size per chunk** next to the split-length field in
+  the Process tab, and warns when a chunk is likely to hit the limit;
+- fails with a clear message instead of crashing, if this happens.
+
+If you're regularly processing long sets, the real fix is to deploy via
+**Railway** instead of Vercel — `server.js` (Express) has no such cap. Vercel
+is fine for song-length clips.
+
+## Legacy option: a single shared API key instead of OAuth
+
+Roblox account cookies (`.ROBLOSECURITY`) aren't used here and shouldn't be —
+they're full session tokens, using them for automation outside Roblox's own
+client breaks Roblox's Terms of Service, and they're a common account-theft
+vector if leaked. If you'd rather not have people connect their own accounts
+at all, set `ROBLOX_API_KEY`, `ROBLOX_CREATOR_TYPE`, and `ROBLOX_CREATOR_ID`
+as environment variables — the server uses them automatically for anyone
+who hasn't connected via OAuth.
+
+
+## Run locally
+
+```bash
+npm install
+npm start
+```
+
+Then open `http://localhost:3000`.
+
+## Deploy
+
+### Vercel
+
+1. Push this repo to GitHub, import it in Vercel.
+2. No config needed — `index.html` is served statically, and
+   `api/roblox/upload.js` is automatically picked up as a serverless
+   function.
+
+### Railway
+
+1. Push this repo to GitHub, deploy from it in Railway.
+2. Railway detects `package.json` and runs `npm start`, which boots
+   `server.js` — this serves the static site **and** the
+   `/api/roblox/upload` route on the assigned `$PORT`.
+
+## Roblox player
+
+`roblox/AudioPrepPlayer.lua` is a companion LocalScript for playing back
+the processed chunks in Roblox with the correct playback speed. Drop it
+in `StarterPlayer > StarterPlayerScripts`. After you upload chunks from
+the Settings-linked Roblox account, the app prints ready-to-paste asset
+ID lines in the log — copy those into the `TRACKS` table at the top of
+the script.
+
+`roblox/XrAudioSystem.rbxm` is a prebuilt model with the client/server
+scripts for a synced, multi-listener show player (play/pause commands
+broadcast to everyone in the server, plus a `Whitelist` module gating
+who can trigger a show). It's downloadable from the app's Settings tab,
+or straight from `roblox/XrAudioSystem.rbxm` in this repo. Insert it in
+Studio via **Insert from File**, then move its pieces into
+`StarterPlayerScripts` / `ServerScriptService` as appropriate.
+
+After processing a batch of tracks, name the show in the Output panel
+and hit **Upload All & Build Show** — it uploads any tracks that aren't
+uploaded yet, then downloads a `<Show Name>.rbxmx` folder of `Sound`
+instances (asset IDs already filled in) ready to drop into
+`XrAudio > Shows` (right-click **Shows** → **Insert from File**). Tracks
+preload/play in the order they appear in that file; the `AudioServer`
+script sorts by each Sound's `Tracknumber` attribute when one is set, so
+add that in Studio if you need a different order than upload order.
+
+## Notes
+
+- The QC pass is a lightweight peak/clip check; the desktop version's
+  full 3-pass static-burst scan was left out to keep browser processing
+  fast.
+- Uploaded audio still goes through Roblox's normal moderation review
+  before it's usable in-experience — the asset ID comes back as soon as
+  Roblox finishes processing the upload, which is separate from
+  moderation approval.
+
+## Asset Settings tab (in-place .rbxm updates)
+
+The tab formerly called "Roblox Assets" is now **Asset Settings** — it's also where uploading and
+building now live; the Process tab just links over to it instead of duplicating those buttons.
+It:
+
+- Renames the show folder inside `XrAudioSystem.rbxm` to whatever you type as the show name.
+- Writes every track you've uploaded this session straight into the show's pre-built Sound
+  slots — no manual "insert this rbxmx and delete the old one" step.
+- Lets you whitelist Roblox usernames for show control — useful if someone uploads audio from an
+  alt account, since you whitelist the account that should be able to trigger the show, separately
+  from whoever uploaded it.
+- Bakes the whitelist directly into the `Whitelist` module inside the same file (or download it on
+  its own as `Whitelist.rbxmx`, without rebuilding the whole model).
+- Gives you back **one updated `.rbxm`** to insert into Studio, same as always.
+
+This *updates* the existing file's Name/SoundId/Source values in place rather than replacing
+instances — it doesn't touch anything else in the model. It also fixes a real bug in the
+bundled `Server` script: unused template slots used to get preloaded anyway (30s timeout wait
+each), which is now skipped, and track order now falls back to alphabetical-by-name if no
+`Tracknumber` attribute is set.
+
+**On slot count:** the template ships with a fixed number of pre-built Sound slots (read directly
+from the file at load time and shown in this tab — never hard-coded), rather than instances being
+created on the fly here. Growing that number for real requires adding real object instances to the
+compiled `.rbxm` binary, which touches several property-serialization formats this tool
+deliberately doesn't touch, precisely because a mistake there is what caused the real file-corruption
+bug described further down — safer to duplicate more Sound instances in Studio and drop in the
+bigger template than to have this app guess at that binary format. If you regularly need more than
+the current count, duplicate more Sound instances (with their Compressor/Equalizer children) in
+Studio, re-export, and swap the file in — the app will pick up the new count automatically.
+
+There's an optional **minify** toggle for the Server/Commands/AudioClient scripts (comment and
+whitespace stripping). Worth knowing: Roblox doesn't support shipping scripts that are
+encrypted-but-runnable — anyone with Studio access to a place can always read a Script's
+Source there. The Server/Commands scripts already never reach players at all (they run with
+`RunContext = Server`); only the client-side script is ever exposed to exploit tools, which is
+what minification is actually protecting. The `Whitelist` module is always left readable since
+you're meant to keep editing it in this tab.
+
+## Universal / shared API key
+
+See "Legacy option: a single shared API key instead of OAuth" near the top —
+same mechanism, kept here as a pointer since this section predates it.
+
+## No-API-key path: paste an asset ID manually
+
+Each processed track now has a small "or paste asset ID" field next to it. If you'd rather not
+deal with the Open Cloud API key at all, upload the file yourself through Roblox's own site
+(create.roblox.com → Creator Dashboard → Creations → Audio → upload), copy the asset ID Roblox
+shows you there, and paste it in. That track is now treated exactly the same as one uploaded
+through the app — it flows into "Build & Download Updated .rbxm" normally. This needs no key,
+no IP restriction, and no server credentials at all, since you're just using Roblox's own
+website directly.
+
+## Fixed: "file is corrupted" when inserting the built .rbxm into Studio
+
+Real bug, now fixed: the builder was re-compressing *every* chunk in the file on rebuild — including
+parts it never touched — through a hand-written LZ4 encoder. Any edge case that encoder got wrong
+could corrupt chunks that had nothing to do with your edit. It now does two things instead:
+unmodified chunks are copied byte-for-byte from the original file (never re-encoded at all), and
+modified chunks are stored uncompressed (a completely valid, already-used-elsewhere-in-the-file
+format) instead of being run through that encoder. Re-download and rebuild — the corrupted-file
+issue should be gone.
+
+## Latest update: History tab, bulk rename, Asset Settings redirect, always-max static removal, faster concert sets
+
+**History tab.** New tab that logs what's happened in this browser — files processed, renames,
+uploads, whitelist adds, and show builds — with a timestamp on each entry and a "Clear history"
+button. It's local to the device (localStorage), not synced anywhere.
+
+**Rename files.** Every processed output now has a **Rename** button (prompts for a new name,
+keeps the extension), plus a **Rename All** field above the output list that renames every file in
+the batch to `<your text> 1`, `<your text> 2`, etc. — handy when the source files came in with long
+DJ-software filenames.
+
+**Roblox Assets tab renamed to Asset Settings**, and it's now also where uploading/building lives —
+the Process tab no longer has its own "Upload All" / "Upload All & Build Show" buttons; instead
+there's one button that jumps straight to Asset Settings, which has both.
+
+**Static/noise removal is always on at max strength now** — the Light/Medium/Strong/Max dropdown is
+gone. The max preset itself was also pushed a bit harder (higher afftdn floor + an extra de-hiss
+trim above 13kHz) since max wasn't cutting it for some sources; if you're still hearing static, it's
+likely broadband noise baked into the original recording rather than something a denoiser can fully
+lift without also chewing into the music — happy to keep tuning it with a sample if it's still off.
+
+**Faster, more resilient concert-set processing.** Each processing "piece" of a long set now
+automatically retries once before being marked failed, instead of giving up immediately on a
+one-off ffmpeg error. Also cut a redundant full second decode pass that was only there to report
+peak dB — past 25 minutes of audio it now samples the first 25 minutes for that number instead of
+re-decoding the entire set, which was adding real time on multi-hour sets for no audible benefit.
+
+**Settings: background image/GIF + layout options.** Settings has a new Background panel (upload
+an image or GIF, with an adjustable dim overlay so text stays legible) and a Layout picker
+(Compact / Wide / Two columns) for a bit more visual control over the app itself.
+
+**Show-Control Whitelist** already existed and still works the same way — whitelist a Roblox
+username there if uploads are coming from an alt account but the "real" account needs show control.
+Also fixed a dead button (`Download standalone Whitelist.rbxmx`) that referenced an element that
+didn't exist in the page — that download works now too.
+
+**Not included:** a built-in YouTube-to-MP3 downloader. That would mean routinely pulling
+copyrighted audio off YouTube outside what its Terms of Service allow, so it's not something this
+project adds — the Process tab still takes any audio file you already have, including exports from
+your DJ software or files you already own the rights to use.
+
+## Latest update: long concert sets, live logging, auto-upload, first-run tutorial
+
+**Long concert sets no longer time out or error out.** Previously the whole file — even a
+2-3 hour set — was pushed through the full noise-reduction/limiter chain in one pass and held
+entirely in memory before being split. For long sets that's what caused the slow processing and
+the eventual error. Audio is now extracted and processed in bounded segments (same length as your
+chunk-length setting) directly from the source file, whether or not "Split Into Chunks" is on — if
+it's off, the segments are stitched back into one file at the end with a fast stream-copy concat.
+Memory use now stays flat no matter how long the source file is, and a problem in one segment (or
+one file, in a multi-file batch) is logged and skipped instead of losing the whole run.
+
+**A lot more logging, in real time.** The log now streams live percentage/time progress for
+whatever segment is currently encoding (parsed from ffmpeg's own output), plus per-segment timing
+and an estimated-time-remaining line after each one finishes. If it's scrolling, it's working —
+that was the main "is this stuck?" complaint.
+
+**Auto-upload.** There's a new toggle above the Process button: "Auto-upload each chunk to Roblox
+as soon as it's processed." Turn it on and every finished chunk queues for upload in the background
+while the rest keep processing — no need to wait for everything to finish and click Upload All
+after the fact. Uploads also now retry automatically (up to 2 extra attempts with backoff) on
+network hiccups, time out cleanly after 2 minutes instead of hanging forever, and no longer pop up
+a blocking alert per failed file during a batch — failures are logged and marked "failed" on that
+row so you can retry just that one.
+
+**First-run tutorial.** New users get a short walkthrough on first unlock — a spotlight highlights
+each part of the UI (drop zone, mode picker, chunk length, Process button, the log, output/upload,
+and where to add your Roblox key) with a "Skip tutorial" option at every step. Click the **?**
+button next to the tabs to replay it any time.
+
+**Credit.** Added a small "made by xr1vs" tag in the bottom-left corner.
+
+## Latest update: sign in with Roblox (OAuth) instead of pasting an API key
+
+Uploading no longer requires anyone to create or paste an Open Cloud API key. Settings now has a
+single **"Connect with Roblox"** button — it sends people through Roblox's own OAuth sign-in and
+consent screen (scoped to `asset:read`/`asset:write` only), and uploads happen under their own
+account from then on. The connection is stored server-side (per-browser session cookie mapped to
+a refresh token — see "Set up a Roblox OAuth 2.0 app" above for the required env vars, including
+optional Upstash Redis so connections survive across visits on serverless hosts), and access
+tokens refresh automatically in the background since they only last 15 minutes. People can
+disconnect any time from Settings, or by revoking the app's access directly on roblox.com.
+
+The old single-shared-API-key setup still works as a fallback (see "Legacy option" above) for
+deployments that would rather not have everyone connect individually.
+
+## Audio Permissions (real Roblox asset permissions, not show-control)
+
+This is Roblox's actual asset-sharing system — different from the Show-Control Whitelist above,
+which only controls who can trigger playback in-game. Audio Permissions grants a Roblox account
+permission to **use** your uploaded audio assets in their own experiences. The typical case: audio
+gets uploaded from an alt account, and the main account (or a collaborator) needs to actually use
+those audio IDs in a game.
+
+Type a username in Asset Settings and click **Grant Access to All Uploaded Tracks** — it resolves
+the username to a Roblox user ID, then calls Roblox's Open Cloud `asset-permissions-api`
+(`PATCH /v1/assets/permissions`, action `Use`) for every track uploaded this session. Whoever's
+connected (OAuth or API key) needs to already own those assets — you can't grant permission on audio
+you don't have write access to. Roblox doesn't currently offer a way to revoke a granted permission
+through the API, so double-check the username before granting.
+
+## Not included: YouTube / music-link downloading
+
+Pasting a YouTube (or similar) link and having the app fetch + convert it isn't something this
+project adds, in a tab or otherwise — that means routinely pulling audio off those platforms outside
+what their Terms of Service allow, regardless of which UI wraps it. The Process tab still takes any
+audio file you already have — exports from your DJ software, your own recordings, or anything you
+already have the rights to use.
+
+
